@@ -174,11 +174,11 @@ def edit_item(user_id, item_id, field, value):
     
     return updated_rows > 0
 
-def list_items(user_id, category=None, limit=5):
+def list_items(user_id, category=None):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     query = """
-        SELECT i.id, i.title, i.desc, i.done, i.place, i.completed_date, sc.name
+        SELECT i.id, i.title, i.desc, i.done, i.place, i.completed_date, c.name as category_name, sc.name as sub_category_name
         FROM items i
         JOIN categories c ON i.category_id = c.id
         JOIN sub_categories sc ON i.sub_category_id = sc.id
@@ -188,8 +188,7 @@ def list_items(user_id, category=None, limit=5):
     if category:
         query += " AND c.name=?"
         params.append(category)
-    query += " ORDER BY i.id DESC LIMIT ?"
-    params.append(limit)
+    query += " ORDER BY c.name, i.id"
     c.execute(query, params)
     rows = c.fetchall()
     conn.close()
@@ -369,21 +368,28 @@ def callback():
                     elif t_lower.startswith("echo "):
                         reply_text = t[5:]
                     elif t_lower.startswith("list"):
-                        category = t[4:].strip() if len(t) > 4 else None
-                        items = list_items(user_id, category)
+                        category_from_command = t[4:].strip() if len(t) > 4 else None
+                        items = list_items(user_id, category_from_command)
                         if not items:
                             reply_text = "目前沒有任何清單。"
                         else:
                             lines = []
+                            current_category = None
                             for i in items:
-                                # i[0] is id, i[1] is title, i[3] is done, i[5] is completed_date, i[6] is sub_category.name
+                                # 索引: 6=主分類名, 7=子分類名
+                                category_name = i[6]
+                                if category_name != current_category:
+                                    lines.append(f"\n--- {category_name} ---")
+                                    current_category = category_name
+
                                 status = "✅" if i[3] else "📝"
-                                line = f"{status} [{i[0]}] {i[1]} ({i[6]})"
+                                # 索引: 0=id, 1=title, 3=done, 5=completed_date, 7=sub_category_name
+                                line = f"{status} [{i[0]}] {i[1]} ({i[7]})"
                                 if i[3]:
                                     completed_time = datetime.fromisoformat(i[5]).strftime('%Y-%m-%d %H:%M')
                                     line += f" - 完成於 {completed_time}"
                                 lines.append(line)
-                            reply_text = "\n".join(lines)
+                            reply_text = "\n".join(lines).strip()
                     else:
                         reply_text = f"收到：{text}"
 
