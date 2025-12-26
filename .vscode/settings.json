@@ -5,6 +5,7 @@
     "linebot",
     "ngrok",
     "NGROK_AUTHTOKEN",
-    "pyngrok"
+    "pyngrok",
+    "venv"
   ]
 }
