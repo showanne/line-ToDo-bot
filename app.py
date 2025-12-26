@@ -111,6 +111,21 @@ def add_item(user_id, category, sub_category, title, desc="", done=0, place=None
     conn.commit()
     conn.close()
 
+def delete_item(user_id, item_id):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    # 確保項目屬於該使用者
+    c.execute("SELECT id FROM items WHERE id=? AND user_id=?", (item_id, user_id))
+    item = c.fetchone()
+    if item:
+        c.execute("DELETE FROM items WHERE id=?", (item_id,))
+        conn.commit()
+        conn.close()
+        return True
+    else:
+        conn.close()
+        return False
+
 def list_items(user_id, category=None, limit=5):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -135,6 +150,38 @@ def list_items(user_id, category=None, limit=5):
 # ------------------------
 # Flask + LINE Webhook
 # ------------------------
+user_states = {}
+
+def handle_step_by_step_add(user_id, text):
+    state = user_states[user_id]
+    stage = state.get("stage")
+    t = text.strip()
+
+    if t == "取消":
+        del user_states[user_id]
+        return "已取消新增操作。"
+
+    if stage == "awaiting_category":
+        state["data"]["category"] = t
+        state["stage"] = "awaiting_sub_category"
+        return "請輸入子分類："
+    elif stage == "awaiting_sub_category":
+        state["data"]["sub_category"] = t
+        state["stage"] = "awaiting_title"
+        return "請輸入待辦事項名稱："
+    elif stage == "awaiting_title":
+        state["data"]["title"] = t
+        state["stage"] = "awaiting_place"
+        return "請輸入地點（若無請輸入'無'）："
+    elif stage == "awaiting_place":
+        place = t if t not in ["無", "none", "skip"] else None
+        data = state["data"]
+        add_item(user_id, data["category"], data["sub_category"], data["title"], place=place)
+        del user_states[user_id]
+        return f"已新增：{data['title']} ({data['category']}/{data['sub_category']})" + (f"，地點：{place}" if place else "")
+    return "發生未知錯誤，請取消後重試。"
+
+
 @app.get("/health")
 def health():
     return jsonify({"status": "ok"})
@@ -164,8 +211,11 @@ def callback():
                 reply_text = "我目前只處理文字訊息，請傳文字給我。"
             else:
                 t = text.strip()
+
+                if user_id in user_states:
+                    reply_text = handle_step_by_step_add(user_id, t)
                 # 快捷指令判斷
-                if "+" in t:
+                elif "+" in t:
                     parts = [p.strip() for p in t.split("+")]
                     if len(parts) >= 3:
                         category = parts[0]
@@ -183,8 +233,25 @@ def callback():
                     t_lower = t.lower()
                     if t_lower == "ping":
                         reply_text = "pong"
+                    elif t_lower in ["新增", "add"]:
+                        user_states[user_id] = {
+                            "action": "add_item",
+                            "stage": "awaiting_category",
+                            "data": {}
+                        }
+                        reply_text = "好的，我們來新增一個待辦事項。請輸入主分類（或輸入'取消'）："
+                    elif t_lower.startswith("刪除 ") or t_lower.startswith("del "):
+                        try:
+                            item_id_str = t.split(" ")[1]
+                            item_id = int(item_id_str)
+                            if delete_item(user_id, item_id):
+                                reply_text = f"已刪除待辦事項 [{item_id}]。"
+                            else:
+                                reply_text = f"找不到待辦事項 [{item_id}]，或你沒有權限刪除它。"
+                        except (IndexError, ValueError):
+                            reply_text = "刪除指令格式錯誤，請使用 '刪除 <編號>'"
                     elif t_lower == "help":
-                        reply_text = "指令：help / ping / echo <文字> / 快捷指令: 主分類 + 子分類 + 名稱 [+ 地點]"
+                        reply_text = "指令：\n- 新增 (逐步新增)\n- 刪除 <編號>\n- list (列出項目)\n- 快捷指令: 主分類 + 子分類 + 名稱 [+ 地點]"
                     elif t_lower.startswith("echo "):
                         reply_text = t[5:]
                     elif t_lower.startswith("list"):
@@ -195,7 +262,8 @@ def callback():
                         else:
                             lines = []
                             for i in items:
-                                lines.append(f"{i[1]} ({i[6]})" + (f" - 完成於 {i[5]}" if i[3] else ""))
+                                # i[0] is id, i[1] is title, i[6] is sub_category.name
+                                lines.append(f"[{i[0]}] {i[1]} ({i[6]})" + (f" - 完成於 {i[5]}" if i[3] else ""))
                             reply_text = "\n".join(lines)
                     else:
                         reply_text = f"收到：{text}"
