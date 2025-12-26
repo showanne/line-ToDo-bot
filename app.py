@@ -126,6 +126,54 @@ def delete_item(user_id, item_id):
         conn.close()
         return False
 
+def mark_item_as_done(user_id, item_id):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    # 確保項目屬於該使用者
+    c.execute("SELECT id FROM items WHERE id=? AND user_id=?", (item_id, user_id))
+    item = c.fetchone()
+    if item:
+        c.execute("UPDATE items SET done=1, completed_date=? WHERE id=?", (datetime.now().isoformat(), item_id))
+        conn.commit()
+        conn.close()
+        return True
+    else:
+        conn.close()
+        return False
+
+def get_item(user_id, item_id):
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("""
+        SELECT i.id, i.title, i.place, c.name as category_name, sc.name as sub_category_name
+        FROM items i
+        JOIN categories c ON i.category_id = c.id
+        JOIN sub_categories sc ON i.sub_category_id = sc.id
+        WHERE i.id=? AND i.user_id=?
+    """, (item_id, user_id))
+    item = c.fetchone()
+    conn.close()
+    return item
+
+def edit_item(user_id, item_id, field, value):
+    # 安全白名單，防止 SQL 注入
+    if field not in ['title', 'place']:
+        return False
+
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    
+    # 動態但安全地構建查詢
+    query = f"UPDATE items SET {field}=? WHERE id=? AND user_id=?"
+    c.execute(query, (value, item_id, user_id))
+    
+    updated_rows = c.rowcount
+    conn.commit()
+    conn.close()
+    
+    return updated_rows > 0
+
 def list_items(user_id, category=None, limit=5):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -152,33 +200,65 @@ def list_items(user_id, category=None, limit=5):
 # ------------------------
 user_states = {}
 
-def handle_step_by_step_add(user_id, text):
+def handle_stateful_message(user_id, text):
     state = user_states[user_id]
-    stage = state.get("stage")
+    action = state.get("action")
     t = text.strip()
 
-    if t == "取消":
+    if t.lower() == "取消":
         del user_states[user_id]
-        return "已取消新增操作。"
+        return "操作已取消。"
 
-    if stage == "awaiting_category":
-        state["data"]["category"] = t
-        state["stage"] = "awaiting_sub_category"
-        return "請輸入子分類："
-    elif stage == "awaiting_sub_category":
-        state["data"]["sub_category"] = t
-        state["stage"] = "awaiting_title"
-        return "請輸入待辦事項名稱："
-    elif stage == "awaiting_title":
-        state["data"]["title"] = t
-        state["stage"] = "awaiting_place"
-        return "請輸入地點（若無請輸入'無'）："
-    elif stage == "awaiting_place":
-        place = t if t not in ["無", "none", "skip"] else None
-        data = state["data"]
-        add_item(user_id, data["category"], data["sub_category"], data["title"], place=place)
-        del user_states[user_id]
-        return f"已新增：{data['title']} ({data['category']}/{data['sub_category']})" + (f"，地點：{place}" if place else "")
+    # --- Add Item Flow ---
+    if action == "add_item":
+        stage = state.get("stage")
+        if stage == "awaiting_category":
+            state["data"]["category"] = t
+            state["stage"] = "awaiting_sub_category"
+            return "請輸入子分類："
+        elif stage == "awaiting_sub_category":
+            state["data"]["sub_category"] = t
+            state["stage"] = "awaiting_title"
+            return "請輸入待辦事項名稱："
+        elif stage == "awaiting_title":
+            state["data"]["title"] = t
+            state["stage"] = "awaiting_place"
+            return "請輸入地點（若無請輸入'無'）："
+        elif stage == "awaiting_place":
+            place = t if t.lower() not in ["無", "none", "skip"] else None
+            data = state["data"]
+            add_item(user_id, data["category"], data["sub_category"], data["title"], place=place)
+            del user_states[user_id]
+            return f"已新增：{data['title']} ({data['category']}/{data['sub_category']})" + (f"，地點：{place}" if place else "")
+    
+    # --- Edit Item Flow ---
+    elif action == "edit_item":
+        stage = state.get("stage")
+        item_id = state.get("item_id")
+
+        if stage == "awaiting_field_choice":
+            if t in ["1", "名稱"]:
+                state["stage"] = "awaiting_new_value"
+                state["field"] = "title"
+                return "請輸入新的「名稱」："
+            elif t in ["2", "地點"]:
+                state["stage"] = "awaiting_new_value"
+                state["field"] = "place"
+                return "請輸入新的「地點」（若要清空請輸入'無'）："
+            else:
+                return "無效的選項，請重新輸入 (1 或 2)，或輸入'取消'。"
+        
+        elif stage == "awaiting_new_value":
+            field = state.get("field")
+            value = t if not (field == 'place' and t.lower() in ['無', 'none']) else None
+            
+            if edit_item(user_id, item_id, field, value):
+                del user_states[user_id]
+                return f"待辦事項 [{item_id}] 已更新。"
+            else:
+                del user_states[user_id] # Clear state even on failure
+                return f"更新失敗，找不到項目 [{item_id}] 或欄位不正確。"
+
     return "發生未知錯誤，請取消後重試。"
 
 
@@ -213,7 +293,7 @@ def callback():
                 t = text.strip()
 
                 if user_id in user_states:
-                    reply_text = handle_step_by_step_add(user_id, t)
+                    reply_text = handle_stateful_message(user_id, t)
                 # 快捷指令判斷
                 elif "+" in t:
                     parts = [p.strip() for p in t.split("+")]
@@ -240,6 +320,30 @@ def callback():
                             "data": {}
                         }
                         reply_text = "好的，我們來新增一個待辦事項。請輸入主分類（或輸入'取消'）："
+                    elif t_lower.startswith("編輯 ") or t_lower.startswith("edit "):
+                        try:
+                            item_id_str = t.split(" ")[1]
+                            item_id = int(item_id_str)
+                            item = get_item(user_id, item_id)
+                            if item:
+                                user_states[user_id] = {
+                                    "action": "edit_item",
+                                    "stage": "awaiting_field_choice",
+                                    "item_id": item_id
+                                }
+                                reply_text = (
+                                    f"您正要編輯項目 [{item['id']}]：{item['title']}\n"
+                                    f"分類：{item['category_name']}/{item['sub_category_name']}\n"
+                                    f"地點：{item['place'] or '未設定'}\n\n"
+                                    "您想編輯哪個欄位？\n"
+                                    "1. 名稱\n"
+                                    "2. 地點\n\n"
+                                    "請輸入選項（或輸入'取消'）"
+                                )
+                            else:
+                                reply_text = f"找不到待辦事項 [{item_id}]。"
+                        except (IndexError, ValueError):
+                            reply_text = "編輯指令格式錯誤，請使用 '編輯 <編號>'"
                     elif t_lower.startswith("刪除 ") or t_lower.startswith("del "):
                         try:
                             item_id_str = t.split(" ")[1]
@@ -250,8 +354,18 @@ def callback():
                                 reply_text = f"找不到待辦事項 [{item_id}]，或你沒有權限刪除它。"
                         except (IndexError, ValueError):
                             reply_text = "刪除指令格式錯誤，請使用 '刪除 <編號>'"
+                    elif t_lower.startswith("完成 ") or t_lower.startswith("done "):
+                        try:
+                            item_id_str = t.split(" ")[1]
+                            item_id = int(item_id_str)
+                            if mark_item_as_done(user_id, item_id):
+                                reply_text = f"已將待辦事項 [{item_id}] 標示為完成。"
+                            else:
+                                reply_text = f"找不到待辦事項 [{item_id}]，或你沒有權限變更它。"
+                        except (IndexError, ValueError):
+                            reply_text = "完成指令格式錯誤，請使用 '完成 <編號>'"
                     elif t_lower == "help":
-                        reply_text = "指令：\n- 新增 (逐步新增)\n- 刪除 <編號>\n- list (列出項目)\n- 快捷指令: 主分類 + 子分類 + 名稱 [+ 地點]"
+                        reply_text = "指令：\n- 新增 (逐步新增)\n- 編輯 <編號>\n- 刪除 <編號>\n- 完成 <編號>\n- list (列出項目)\n- 快捷指令: 主分類 + 子分類 + 名稱 [+ 地點]"
                     elif t_lower.startswith("echo "):
                         reply_text = t[5:]
                     elif t_lower.startswith("list"):
@@ -262,8 +376,13 @@ def callback():
                         else:
                             lines = []
                             for i in items:
-                                # i[0] is id, i[1] is title, i[6] is sub_category.name
-                                lines.append(f"[{i[0]}] {i[1]} ({i[6]})" + (f" - 完成於 {i[5]}" if i[3] else ""))
+                                # i[0] is id, i[1] is title, i[3] is done, i[5] is completed_date, i[6] is sub_category.name
+                                status = "✅" if i[3] else "📝"
+                                line = f"{status} [{i[0]}] {i[1]} ({i[6]})"
+                                if i[3]:
+                                    completed_time = datetime.fromisoformat(i[5]).strftime('%Y-%m-%d %H:%M')
+                                    line += f" - 完成於 {completed_time}"
+                                lines.append(line)
                             reply_text = "\n".join(lines)
                     else:
                         reply_text = f"收到：{text}"
