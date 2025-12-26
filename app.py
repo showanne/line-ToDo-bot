@@ -167,25 +167,24 @@ def callback():
                 # 快捷指令判斷
                 if "+" in t:
                     parts = [p.strip() for p in t.split("+")]
-                    if len(parts) >= 2:
+                    if len(parts) >= 3:
                         category = parts[0]
-                        title = parts[1]
-                        sub_category = category  # 自動用主分類當子分類
+                        sub_category = parts[1]
+                        title = parts[2]
                         place = None
-                        done = 0
-                        if len(parts) >= 3:
-                            place = parts[2]
-                            done = 1
-                        add_item(user_id, category, sub_category, title, done=done, place=place)
+                        if len(parts) >= 4:
+                            place = parts[3]
+                        
+                        add_item(user_id, category, sub_category, title, done=0, place=place)
                         reply_text = f"已新增：{title} ({category}/{sub_category})" + (f"，地點：{place}" if place else "")
                     else:
-                        reply_text = "快捷指令格式錯誤，範例：主分類 + 書名 [+ 地點]"
+                        reply_text = "快捷指令格式錯誤，範例：主分類 + 子分類 + 名稱 [+ 地點]"
                 else:
                     t_lower = t.lower()
                     if t_lower == "ping":
                         reply_text = "pong"
                     elif t_lower == "help":
-                        reply_text = "指令：help / ping / echo <文字> / 快捷指令: 主分類 + 書名 [+ 地點]"
+                        reply_text = "指令：help / ping / echo <文字> / 快捷指令: 主分類 + 子分類 + 名稱 [+ 地點]"
                     elif t_lower.startswith("echo "):
                         reply_text = t[5:]
                     elif t_lower.startswith("list"):
