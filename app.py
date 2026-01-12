@@ -111,35 +111,35 @@ def add_item(user_id, category, sub_category, title, desc="", done=0, place=None
     conn.commit()
     conn.close()
 
-def delete_item(user_id, item_id):
+def delete_item(user_id, item_ids):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    # 確保項目屬於該使用者
-    c.execute("SELECT id FROM items WHERE id=? AND user_id=?", (item_id, user_id))
-    item = c.fetchone()
-    if item:
-        c.execute("DELETE FROM items WHERE id=?", (item_id,))
-        conn.commit()
-        conn.close()
-        return True
-    else:
-        conn.close()
-        return False
+    deleted_count = 0
+    for item_id in item_ids:
+        # 確保項目屬於該使用者
+        c.execute("SELECT id FROM items WHERE id=? AND user_id=?", (item_id, user_id))
+        item = c.fetchone()
+        if item:
+            c.execute("DELETE FROM items WHERE id=?", (item_id,))
+            deleted_count += 1
+    conn.commit()
+    conn.close()
+    return deleted_count
 
-def mark_item_as_done(user_id, item_id):
+def mark_item_as_done(user_id, item_ids):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    # 確保項目屬於該使用者
-    c.execute("SELECT id FROM items WHERE id=? AND user_id=?", (item_id, user_id))
-    item = c.fetchone()
-    if item:
-        c.execute("UPDATE items SET done=1, completed_date=? WHERE id=?", (datetime.now().isoformat(), item_id))
-        conn.commit()
-        conn.close()
-        return True
-    else:
-        conn.close()
-        return False
+    updated_count = 0
+    for item_id in item_ids:
+        # 確保項目屬於該使用者
+        c.execute("SELECT id FROM items WHERE id=? AND user_id=?", (item_id, user_id))
+        item = c.fetchone()
+        if item:
+            c.execute("UPDATE items SET done=1, completed_date=? WHERE id=?", (datetime.now().isoformat(), item_id))
+            updated_count += 1
+    conn.commit()
+    conn.close()
+    return updated_count
 
 def get_item(user_id, item_id):
     conn = sqlite3.connect(DB_FILE)
@@ -294,6 +294,34 @@ def callback():
                 if user_id in user_states:
                     reply_text = handle_stateful_message(user_id, t)
                 # 快捷指令判斷
+                elif "++" in t:
+                    parts = [p.strip() for p in t.split("++")]
+                    if len(parts) == 2:
+                        context_parts = [p.strip() for p in parts[0].split("+")]
+                        if len(context_parts) >= 2:
+                            category = context_parts[0]
+                            sub_category = context_parts[1]
+                            place = None
+                            if len(context_parts) >= 3:
+                                place = context_parts[2]
+
+                            items = [i.strip() for i in parts[1].split(",")]
+                            added_count = 0
+                            for item_title in items:
+                                if item_title: # Avoid adding empty items
+                                    add_item(user_id, category, sub_category, item_title, place=place)
+                                    added_count += 1
+                            if added_count > 0:
+                                reply_text = f"已在 {category}/{sub_category}"
+                                if place:
+                                    reply_text += f" (地點: {place})"
+                                reply_text += f" 新增 {added_count} 個項目。"
+                            else:
+                                reply_text = "沒有可新增的項目。"
+                        else:
+                            reply_text = "快捷指令格式錯誤，範例：主分類 + 子分類 [+ 地點] ++ 項目1, 項目2, ..."
+                    else:
+                        reply_text = "快捷指令格式錯誤，範例：主分類 + 子分類 [+ 地點] ++ 項目1, 項目2, ..."
                 elif "+" in t:
                     parts = [p.strip() for p in t.split("+")]
                     if len(parts) >= 3:
@@ -345,26 +373,22 @@ def callback():
                             reply_text = "編輯指令格式錯誤，請使用 '編輯 <編號>'"
                     elif t_lower.startswith("刪除 ") or t_lower.startswith("del "):
                         try:
-                            item_id_str = t.split(" ")[1]
-                            item_id = int(item_id_str)
-                            if delete_item(user_id, item_id):
-                                reply_text = f"已刪除待辦事項 [{item_id}]。"
-                            else:
-                                reply_text = f"找不到待辦事項 [{item_id}]，或你沒有權限刪除它。"
+                            item_ids_str = t.split(" ", 1)[1]
+                            item_ids = [int(i.strip()) for i in item_ids_str.split(",")]
+                            deleted_count = delete_item(user_id, item_ids)
+                            reply_text = f"已刪除 {deleted_count} 個項目。"
                         except (IndexError, ValueError):
-                            reply_text = "刪除指令格式錯誤，請使用 '刪除 <編號>'"
+                            reply_text = "刪除指令格式錯誤，請使用 '刪除 <編號1>,<編號2>...'"
                     elif t_lower.startswith("完成 ") or t_lower.startswith("done "):
                         try:
-                            item_id_str = t.split(" ")[1]
-                            item_id = int(item_id_str)
-                            if mark_item_as_done(user_id, item_id):
-                                reply_text = f"已將待辦事項 [{item_id}] 標示為完成。"
-                            else:
-                                reply_text = f"找不到待辦事項 [{item_id}]，或你沒有權限變更它。"
+                            item_ids_str = t.split(" ", 1)[1]
+                            item_ids = [int(i.strip()) for i in item_ids_str.split(",")]
+                            updated_count = mark_item_as_done(user_id, item_ids)
+                            reply_text = f"已將 {updated_count} 個項目標示為完成。"
                         except (IndexError, ValueError):
-                            reply_text = "完成指令格式錯誤，請使用 '完成 <編號>'"
+                            reply_text = "完成指令格式錯誤，請使用 '完成 <編號1>,<編號2>...'"
                     elif t_lower == "help":
-                        reply_text = "指令：\n- 新增 (逐步新增)\n- 編輯 <編號>\n- 刪除 <編號>\n- 完成 <編號>\n- list (列出項目)\n- 快捷指令: 主分類 + 子分類 + 名稱 [+ 地點]"
+                        reply_text = "指令：\n- 新增 (逐步新增)\n- 編輯 <編號>\n- 刪除 <編號1>,<編號2>...\n- 完成 <編號1>,<編號2>...\n- list (列出項目)\n- 快捷指令: 主分類 + 子分類 + 名稱 [+ 地點]\n- 多筆新增: 主分類 + 子分類 [+ 地點] ++ 項目1, 項目2, ..."
                     elif t_lower.startswith("echo "):
                         reply_text = t[5:]
                     elif t_lower.startswith("list"):
