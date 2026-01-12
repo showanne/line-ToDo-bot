@@ -69,3 +69,21 @@ python app.py
 - **資料庫 (Database):** 資料庫直接在 `app.py` 中進行初始化與管理。若資料庫檔案不存在，則會自動建立 Schema（資料表結構）。所有資料庫操作均由同一檔案內的輔助函式（helper functions）處理。
 - **指令處理 (Commands):** 使用者指令在主要的 `/callback` Webhook 端點進行處理。程式碼會檢查特定的關鍵字與指令模式以觸發不同動作。簡單指令會直接處理，而複雜的多步驟指令則會利用狀態管理字典來追蹤進度。
 - **依賴管理 (Dependencies):** 專案的依賴套件清單列於 `requirements.txt` 中。
+
+## AI 行為準則 (AI Behavior Guidelines)
+
+為了確保開發效率與系統安全性，請 GEMINI 遵循以下規則：
+
+### 1. 檔案操作 (File Operations)
+
+- **允許新增檔案**：當專案需要新的模組、測試腳本或設定檔（如 `utils.py`, `tests/test_api.py`）時，請直接生成並建議建立該檔案。
+- **更新程式碼**：可以直接提供現有檔案（如 `app.py`）的修改建議或完整程式碼內容。
+
+### 2. 安裝與環境變更 (Installation & System Changes)
+
+- **僅提供指令提示**：當需要安裝新的 Python 套件（如 `pip install pandas`）或更改系統環境時，**請勿嘗試自行執行**，僅需在對話中提示我執行相關指令。
+- **更新依賴清單**：若引入了新套件，請提醒我將其手動加入 `requirements.txt`。
+
+### 3. 安全性 (Security)
+
+- **憑證保護**：絕對不要在產生的檔案中寫入真實的 `LINE_CHANNEL_SECRET` 或 `NGROK_AUTHTOKEN`，請一律使用環境變數或預留位置。

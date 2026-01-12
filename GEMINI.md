@@ -6,10 +6,10 @@ This project is a LINE To-Do Bot, a chatbot for the LINE messaging platform that
 
 ### Main Technologies
 
-*   **Backend:** Python, Flask
-*   **Database:** SQLite
-*   **LINE Integration:** line-bot-sdk-python
-*   **Development Tunneling:** pyngrok
+- **Backend:** Python, Flask
+- **Database:** SQLite
+- **LINE Integration:** line-bot-sdk-python
+- **Development Tunneling:** pyngrok
 
 ## Building and Running
 
@@ -59,7 +59,25 @@ The application will start, and `ngrok` will create a public URL for your local 
 
 ## Development Conventions
 
-*   **State Management:** The application uses a simple in-memory dictionary (`user_states`) to manage the conversation state for multi-step commands like "add" or "edit".
-*   **Database:** The database is initialized and managed directly within `app.py`. The schema is created if the database file does not exist. All database operations are handled by helper functions within the same file.
-*   **Commands:** User commands are handled in the main `/callback` webhook endpoint. The code checks for specific keywords and command patterns to trigger different actions. Simple commands are handled directly, while more complex, multi-step commands use the state management dictionary.
-*   **Dependencies:** Project dependencies are listed in `requirements.txt`.
+- **State Management:** The application uses a simple in-memory dictionary (`user_states`) to manage the conversation state for multi-step commands like "add" or "edit".
+- **Database:** The database is initialized and managed directly within `app.py`. The schema is created if the database file does not exist. All database operations are handled by helper functions within the same file.
+- **Commands:** User commands are handled in the main `/callback` webhook endpoint. The code checks for specific keywords and command patterns to trigger different actions. Simple commands are handled directly, while more complex, multi-step commands use the state management dictionary.
+- **Dependencies:** Project dependencies are listed in `requirements.txt`.
+
+## AI Behavior Guidelines
+
+To ensure efficiency and system safety, GEMINI must follow these rules:
+
+### 1. File Operations
+
+- **Allow File Creation**: When the project needs new modules, extensions, or test scripts, you are encouraged to generate the content and suggest creating new files.
+- **Code Updates**: You may provide modification suggestions or full code snippets for existing files.
+
+### 2. Installation & System Changes
+
+- **Prompt Only**: When new Python packages need to be installed (e.g., `pip install`) or system-level changes are required, **DO NOT** attempt to execute them. Instead, clearly prompt the user with the necessary commands.
+- **Dependency Management**: Remind the user to manually update `requirements.txt` if new packages are introduced.
+
+### 3. Security
+
+- **Credential Protection**: Never include real API keys or secrets in generated files. Always direct the user to use the `.env` file.
