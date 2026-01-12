@@ -1,6 +1,5 @@
 # app.py
 import os
-import sqlite3
 from datetime import datetime
 from flask import Flask, request, abort, jsonify
 from dotenv import load_dotenv
@@ -13,11 +12,12 @@ try:
 except Exception:
     from linebot.v3.webhooks import WebhookParser
 
+import database as db
+
 load_dotenv()
 
 CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
-DB_FILE = "todo.db"
 
 if not CHANNEL_ACCESS_TOKEN or not CHANNEL_SECRET:
     raise RuntimeError("請在 .env 設定 LINE_CHANNEL_ACCESS_TOKEN 與 LINE_CHANNEL_SECRET")
@@ -25,174 +25,8 @@ if not CHANNEL_ACCESS_TOKEN or not CHANNEL_SECRET:
 app = Flask(__name__)
 parser = WebhookParser(channel_secret=CHANNEL_SECRET)
 
-# ------------------------
-# Database
-# ------------------------
-def init_db():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    # 使用者、分類、子分類、清單
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS categories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT NOT NULL,
-            name TEXT NOT NULL
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS sub_categories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            category_id INTEGER NOT NULL,
-            name TEXT NOT NULL,
-            FOREIGN KEY(category_id) REFERENCES categories(id)
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT NOT NULL,
-            category_id INTEGER NOT NULL,
-            sub_category_id INTEGER NOT NULL,
-            title TEXT NOT NULL,
-            desc TEXT,
-            place TEXT,
-            done INTEGER DEFAULT 0,
-            completed_date TEXT,
-            FOREIGN KEY(category_id) REFERENCES categories(id),
-            FOREIGN KEY(sub_category_id) REFERENCES sub_categories(id)
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-init_db()
-
-# ------------------------
-# DB Helper
-# ------------------------
-def get_category_id(user_id, name):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("SELECT id FROM categories WHERE user_id=? AND name=?", (user_id, name))
-    row = c.fetchone()
-    if row:
-        cid = row[0]
-    else:
-        c.execute("INSERT INTO categories (user_id, name) VALUES (?, ?)", (user_id, name))
-        cid = c.lastrowid
-        conn.commit()
-    conn.close()
-    return cid
-
-def get_sub_category_id(category_id, name):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("SELECT id FROM sub_categories WHERE category_id=? AND name=?", (category_id, name))
-    row = c.fetchone()
-    if row:
-        sid = row[0]
-    else:
-        c.execute("INSERT INTO sub_categories (category_id, name) VALUES (?, ?)", (category_id, name))
-        sid = c.lastrowid
-        conn.commit()
-    conn.close()
-    return sid
-
-def add_item(user_id, category, sub_category, title, desc="", done=0, place=None):
-    cid = get_category_id(user_id, category)
-    sid = get_sub_category_id(cid, sub_category)
-    completed_date = datetime.now().isoformat() if done else None
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("""
-        INSERT INTO items (user_id, category_id, sub_category_id, title, desc, place, done, completed_date)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (user_id, cid, sid, title, desc, place, done, completed_date))
-    conn.commit()
-    conn.close()
-
-def delete_item(user_id, item_ids):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    deleted_count = 0
-    for item_id in item_ids:
-        # 確保項目屬於該使用者
-        c.execute("SELECT id FROM items WHERE id=? AND user_id=?", (item_id, user_id))
-        item = c.fetchone()
-        if item:
-            c.execute("DELETE FROM items WHERE id=?", (item_id,))
-            deleted_count += 1
-    conn.commit()
-    conn.close()
-    return deleted_count
-
-def mark_item_as_done(user_id, item_ids):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    updated_count = 0
-    for item_id in item_ids:
-        # 確保項目屬於該使用者
-        c.execute("SELECT id FROM items WHERE id=? AND user_id=?", (item_id, user_id))
-        item = c.fetchone()
-        if item:
-            c.execute("UPDATE items SET done=1, completed_date=? WHERE id=?", (datetime.now().isoformat(), item_id))
-            updated_count += 1
-    conn.commit()
-    conn.close()
-    return updated_count
-
-def get_item(user_id, item_id):
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    c.execute("""
-        SELECT i.id, i.title, i.place, c.name as category_name, sc.name as sub_category_name
-        FROM items i
-        JOIN categories c ON i.category_id = c.id
-        JOIN sub_categories sc ON i.sub_category_id = sc.id
-        WHERE i.id=? AND i.user_id=?
-    """, (item_id, user_id))
-    item = c.fetchone()
-    conn.close()
-    return item
-
-def edit_item(user_id, item_id, field, value):
-    # 安全白名單，防止 SQL 注入
-    if field not in ['title', 'place']:
-        return False
-
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    
-    # 動態但安全地構建查詢
-    query = f"UPDATE items SET {field}=? WHERE id=? AND user_id=?"
-    c.execute(query, (value, item_id, user_id))
-    
-    updated_rows = c.rowcount
-    conn.commit()
-    conn.close()
-    
-    return updated_rows > 0
-
-def list_items(user_id, category=None):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    query = """
-        SELECT i.id, i.title, i.desc, i.done, i.place, i.completed_date, c.name as category_name, sc.name as sub_category_name
-        FROM items i
-        JOIN categories c ON i.category_id = c.id
-        JOIN sub_categories sc ON i.sub_category_id = sc.id
-        WHERE i.user_id=?
-    """
-    params = [user_id]
-    if category:
-        query += " AND c.name=?"
-        params.append(category)
-    query += " ORDER BY c.name, i.id"
-    c.execute(query, params)
-    rows = c.fetchall()
-    conn.close()
-    return rows
+# Initialize the database
+db.init_db()
 
 # ------------------------
 # Flask + LINE Webhook
@@ -226,7 +60,7 @@ def handle_stateful_message(user_id, text):
         elif stage == "awaiting_place":
             place = t if t.lower() not in ["無", "none", "skip"] else None
             data = state["data"]
-            add_item(user_id, data["category"], data["sub_category"], data["title"], place=place)
+            db.add_item(user_id, data["category"], data["sub_category"], data["title"], place=place)
             del user_states[user_id]
             return f"已新增：{data['title']} ({data['category']}/{data['sub_category']})" + (f"，地點：{place}" if place else "")
     
@@ -251,7 +85,7 @@ def handle_stateful_message(user_id, text):
             field = state.get("field")
             value = t if not (field == 'place' and t.lower() in ['無', 'none']) else None
             
-            if edit_item(user_id, item_id, field, value):
+            if db.edit_item(user_id, item_id, field, value):
                 del user_states[user_id]
                 return f"待辦事項 [{item_id}] 已更新。"
             else:
@@ -309,7 +143,7 @@ def callback():
                             added_count = 0
                             for item_title in items:
                                 if item_title: # Avoid adding empty items
-                                    add_item(user_id, category, sub_category, item_title, place=place)
+                                    db.add_item(user_id, category, sub_category, item_title, place=place)
                                     added_count += 1
                             if added_count > 0:
                                 reply_text = f"已在 {category}/{sub_category}"
@@ -332,7 +166,7 @@ def callback():
                         if len(parts) >= 4:
                             place = parts[3]
                         
-                        add_item(user_id, category, sub_category, title, done=0, place=place)
+                        db.add_item(user_id, category, sub_category, title, done=0, place=place)
                         reply_text = f"已新增：{title} ({category}/{sub_category})" + (f"，地點：{place}" if place else "")
                     else:
                         reply_text = "快捷指令格式錯誤，範例：主分類 + 子分類 + 名稱 [+ 地點]"
@@ -351,7 +185,7 @@ def callback():
                         try:
                             item_id_str = t.split(" ")[1]
                             item_id = int(item_id_str)
-                            item = get_item(user_id, item_id)
+                            item = db.get_item(user_id, item_id)
                             if item:
                                 user_states[user_id] = {
                                     "action": "edit_item",
@@ -375,7 +209,7 @@ def callback():
                         try:
                             item_ids_str = t.split(" ", 1)[1]
                             item_ids = [int(i.strip()) for i in item_ids_str.split(",")]
-                            deleted_count = delete_item(user_id, item_ids)
+                            deleted_count = db.delete_item(user_id, item_ids)
                             reply_text = f"已刪除 {deleted_count} 個項目。"
                         except (IndexError, ValueError):
                             reply_text = "刪除指令格式錯誤，請使用 '刪除 <編號1>,<編號2>...'"
@@ -383,7 +217,7 @@ def callback():
                         try:
                             item_ids_str = t.split(" ", 1)[1]
                             item_ids = [int(i.strip()) for i in item_ids_str.split(",")]
-                            updated_count = mark_item_as_done(user_id, item_ids)
+                            updated_count = db.mark_item_as_done(user_id, item_ids)
                             reply_text = f"已將 {updated_count} 個項目標示為完成。"
                         except (IndexError, ValueError):
                             reply_text = "完成指令格式錯誤，請使用 '完成 <編號1>,<編號2>...'"
@@ -393,7 +227,7 @@ def callback():
                         reply_text = t[5:]
                     elif t_lower.startswith("list"):
                         category_from_command = t[4:].strip() if len(t) > 4 else None
-                        items = list_items(user_id, category_from_command)
+                        items = db.list_items(user_id, category_from_command)
                         if not items:
                             reply_text = "目前沒有任何清單。"
                         else:
