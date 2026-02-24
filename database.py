@@ -30,7 +30,7 @@ class SqliteEngine:
         c.execute("""
             CREATE TABLE IF NOT EXISTS items (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, category_id INTEGER NOT NULL,
-                sub_category_id INTEGER NOT NULL, title TEXT NOT NULL, desc TEXT, place TEXT,
+                sub_category_id INTEGER NOT NULL, title TEXT NOT NULL, description TEXT, place TEXT,
                 done INTEGER DEFAULT 0, completed_date TEXT,
                 FOREIGN KEY(category_id) REFERENCES categories(id),
                 FOREIGN KEY(sub_category_id) REFERENCES sub_categories(id)
@@ -66,16 +66,16 @@ class SqliteEngine:
         conn.close()
         return sid
 
-    def add_item(self, user_id, category, sub_category, title, desc="", done=0, place=None):
+    def add_item(self, user_id, category, sub_category, title, description="", done=0, place=None):
         cid = self.get_category_id(user_id, category)
         sid = self.get_sub_category_id(cid, sub_category)
         completed_date = datetime.now().isoformat() if done else None
         conn = self._connect()
         c = conn.cursor()
         c.execute("""
-            INSERT INTO items (user_id, category_id, sub_category_id, title, desc, place, done, completed_date)
+            INSERT INTO items (user_id, category_id, sub_category_id, title, description, place, done, completed_date)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (user_id, cid, sid, title, desc, place, done, completed_date))
+        """, (user_id, cid, sid, title, description, place, done, completed_date))
         conn.commit()
         conn.close()
 
@@ -133,7 +133,7 @@ class SqliteEngine:
         conn = self._connect()
         c = conn.cursor()
         query = """
-            SELECT i.id, i.title, i.desc, i.done, i.place, i.completed_date, c.name, sc.name
+            SELECT i.id, i.title, i.description, i.done, i.place, i.completed_date, c.name, sc.name
             FROM items i JOIN categories c ON i.category_id = c.id JOIN sub_categories sc ON i.sub_category_id = sc.id
             WHERE i.user_id=?
         """
@@ -171,7 +171,7 @@ class PostgresEngine:
         c.execute("""
             CREATE TABLE IF NOT EXISTS items (
                 id SERIAL PRIMARY KEY, user_id TEXT NOT NULL, category_id INTEGER NOT NULL,
-                sub_category_id INTEGER NOT NULL, title TEXT NOT NULL, desc TEXT, place TEXT,
+                sub_category_id INTEGER NOT NULL, title TEXT NOT NULL, description TEXT, place TEXT,
                 done INTEGER DEFAULT 0, completed_date TEXT,
                 FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE CASCADE,
                 FOREIGN KEY(sub_category_id) REFERENCES sub_categories(id) ON DELETE CASCADE
@@ -207,16 +207,16 @@ class PostgresEngine:
         conn.close()
         return sid
 
-    def add_item(self, user_id, category, sub_category, title, desc="", done=0, place=None):
+    def add_item(self, user_id, category, sub_category, title, description="", done=0, place=None):
         cid = self.get_category_id(user_id, category)
         sid = self.get_sub_category_id(cid, sub_category)
         completed_date = datetime.now().isoformat() if done else None
         conn = self._connect()
         c = conn.cursor()
         c.execute("""
-            INSERT INTO items (user_id, category_id, sub_category_id, title, desc, place, done, completed_date)
+            INSERT INTO items (user_id, category_id, sub_category_id, title, description, place, done, completed_date)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """, (user_id, cid, sid, title, desc, place, done, completed_date))
+        """, (user_id, cid, sid, title, description, place, done, completed_date))
         conn.commit()
         conn.close()
 
@@ -273,7 +273,7 @@ class PostgresEngine:
         conn = self._connect()
         c = conn.cursor()
         query = """
-            SELECT i.id, i.title, i.desc, i.done, i.place, i.completed_date, c.name, sc.name
+            SELECT i.id, i.title, i.description, i.done, i.place, i.completed_date, c.name, sc.name
             FROM items i JOIN categories c ON i.category_id = c.id JOIN sub_categories sc ON i.sub_category_id = sc.id
             WHERE i.user_id=%s
         """
