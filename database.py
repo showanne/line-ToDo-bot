@@ -129,7 +129,7 @@ class SqliteEngine:
         conn.close()
         return updated_rows > 0
 
-    def list_items(self, user_id, category=None):
+    def list_items(self, user_id, category=None, sub_category=None):
         conn = self._connect()
         c = conn.cursor()
         query = """
@@ -141,7 +141,10 @@ class SqliteEngine:
         if category:
             query += " AND c.name=?"
             params.append(category)
-        query += " ORDER BY c.name, i.id"
+        if sub_category:
+            query += " AND sc.name=?"
+            params.append(sub_category)
+        query += " ORDER BY c.name, sc.name, i.id"
         c.execute(query, params)
         rows = c.fetchall()
         conn.close()
@@ -284,7 +287,7 @@ class PostgresEngine:
         conn.close()
         return updated_rows > 0
 
-    def list_items(self, user_id, category=None):
+    def list_items(self, user_id, category=None, sub_category=None):
         conn = self._connect()
         c = conn.cursor()
         query = """
@@ -296,7 +299,10 @@ class PostgresEngine:
         if category:
             query += " AND c.name=%s"
             params.append(category)
-        query += " ORDER BY c.name, i.id"
+        if sub_category:
+            query += " AND sc.name=%s"
+            params.append(sub_category)
+        query += " ORDER BY c.name, sc.name, i.id"
         c.execute(query, params)
         rows = c.fetchall()
         conn.close()

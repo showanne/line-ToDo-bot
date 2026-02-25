@@ -76,7 +76,7 @@ def handle_stateful_message(user_id, text):
             db.add_item(user_id, data["category"], data["sub_category"], data["title"], place=place)
             del user_states[user_id]
             return f"已新增：{data['title']} ({data['category']}/{data['sub_category']})" + (f"，地點：{place}" if place else ""), None
-    
+
     # --- Edit Item Flow ---
     elif action == "edit_item":
         stage = state.get("stage")
@@ -93,11 +93,11 @@ def handle_stateful_message(user_id, text):
                 return "請輸入新的「地點」（若要清空請輸入'無'）：", get_quick_reply(["無", "取消"])
             else:
                 return "無效的選項，請重新輸入 (1 或 2)，或輸入'取消'。", get_quick_reply(["名稱", "地點", "取消"])
-        
+
         elif stage == "awaiting_new_value":
             field = state.get("field")
             value = t if not (field == 'place' and t.lower() in ['無', 'none']) else None
-            
+
             if db.edit_item(user_id, item_id, field, value):
                 del user_states[user_id]
                 return f"待辦事項 [{item_id}] 已更新。", None
@@ -179,7 +179,7 @@ def callback():
                         place = None
                         if len(parts) >= 4:
                             place = parts[3]
-                        
+
                         db.add_item(user_id, category, sub_category, title, done=0, place=place)
                         reply_text = f"已新增：{title} ({category}/{sub_category})" + (f"，地點：{place}" if place else "")
                     else:
@@ -238,15 +238,26 @@ def callback():
                         except (IndexError, ValueError):
                             reply_text = "完成指令格式錯誤，請使用 '完成 <編號1>,<編號2>...'"
                     elif t_lower == "help":
-                        reply_text = "指令：\n- 新增 (逐步新增)\n- 編輯 <編號>\n- 刪除 <編號1>,<編號2>...\n- 完成 <編號1>,<編號2>...\n- list (列出項目)\n- 快捷指令: 主分類 + 子分類 + 名稱 [+ 地點]\n- 多筆新增: 主分類 + 子分類 [+ 地點] ++ 項目1, 項目2, ..."
+                        reply_text = "指令：\n- 新增 (逐步新增)\n- 編輯 <編號>\n- 刪除 <編號1>,<編號2>...\n- 完成 <編號1>,<編號2>...\n- list (列出項目)\n- list 主分類/子分類\n- 快捷指令: 主分類 + 子分類 + 名稱 [+ 地點]\n- 多筆新增: 主分類 + 子分類 [+ 地點] ++ 項目1, 項目2, ..."
                         quick_reply = get_quick_reply(["新增", "list", "help"])
                     elif t_lower == "contact":
                         reply_text = "如有任何問題，歡迎透過以下方式聯繫我們：\n📧 Email: example@email.com\n🌐 Website: https://github.com/your-repo"
                     elif t_lower.startswith("echo "):
                         reply_text = t[5:]
                     elif t_lower.startswith("list"):
-                        category_from_command = t[4:].strip() if len(t) > 4 else None
-                        items = db.list_items(user_id, category_from_command)
+                        cmd_arg = t[4:].strip() if len(t) > 4 else None
+                        category = None
+                        sub_category = None
+
+                        if cmd_arg:
+                            if "/" in cmd_arg:
+                                parts = cmd_arg.split("/", 1)
+                                category = parts[0].strip()
+                                sub_category = parts[1].strip()
+                            else:
+                                category = cmd_arg
+
+                        items = db.list_items(user_id, category, sub_category)
                         if not items:
                             reply_text = "目前沒有任何清單。"
                         else:
