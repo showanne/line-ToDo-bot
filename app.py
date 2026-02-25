@@ -5,7 +5,13 @@ from flask import Flask, request, abort, jsonify
 from dotenv import load_dotenv
 
 from linebot.v3.messaging import Configuration, ApiClient, MessagingApi
-from linebot.v3.messaging.models import ReplyMessageRequest, TextMessage as V3TextMessage
+from linebot.v3.messaging.models import (
+    ReplyMessageRequest,
+    TextMessage as V3TextMessage,
+    QuickReply,
+    QuickReplyItem,
+    MessageAction
+)
 
 try:
     from linebot.v3.webhook import WebhookParser
@@ -34,6 +40,12 @@ db.init_db()
 # ------------------------
 user_states = {}
 
+def get_quick_reply(labels):
+    if not labels:
+        return None
+    items = [QuickReplyItem(action=MessageAction(label=label, text=label)) for label in labels]
+    return QuickReply(items=items)
+
 def handle_stateful_message(user_id, text):
     state = user_states[user_id]
     action = state.get("action")
@@ -41,7 +53,7 @@ def handle_stateful_message(user_id, text):
 
     if t.lower() == "取消":
         del user_states[user_id]
-        return "操作已取消。"
+        return "操作已取消。", None
 
     # --- Add Item Flow ---
     if action == "add_item":
@@ -49,21 +61,21 @@ def handle_stateful_message(user_id, text):
         if stage == "awaiting_category":
             state["data"]["category"] = t
             state["stage"] = "awaiting_sub_category"
-            return "請輸入子分類："
+            return "請輸入子分類：", get_quick_reply(["取消"])
         elif stage == "awaiting_sub_category":
             state["data"]["sub_category"] = t
             state["stage"] = "awaiting_title"
-            return "請輸入待辦事項名稱："
+            return "請輸入待辦事項名稱：", get_quick_reply(["取消"])
         elif stage == "awaiting_title":
             state["data"]["title"] = t
             state["stage"] = "awaiting_place"
-            return "請輸入地點（若無請輸入'無'）："
+            return "請輸入地點（若無請輸入'無'）：", get_quick_reply(["無", "取消"])
         elif stage == "awaiting_place":
             place = t if t.lower() not in ["無", "none", "skip"] else None
             data = state["data"]
             db.add_item(user_id, data["category"], data["sub_category"], data["title"], place=place)
             del user_states[user_id]
-            return f"已新增：{data['title']} ({data['category']}/{data['sub_category']})" + (f"，地點：{place}" if place else "")
+            return f"已新增：{data['title']} ({data['category']}/{data['sub_category']})" + (f"，地點：{place}" if place else ""), None
     
     # --- Edit Item Flow ---
     elif action == "edit_item":
@@ -74,13 +86,13 @@ def handle_stateful_message(user_id, text):
             if t in ["1", "名稱"]:
                 state["stage"] = "awaiting_new_value"
                 state["field"] = "title"
-                return "請輸入新的「名稱」："
+                return "請輸入新的「名稱」：", get_quick_reply(["取消"])
             elif t in ["2", "地點"]:
                 state["stage"] = "awaiting_new_value"
                 state["field"] = "place"
-                return "請輸入新的「地點」（若要清空請輸入'無'）："
+                return "請輸入新的「地點」（若要清空請輸入'無'）：", get_quick_reply(["無", "取消"])
             else:
-                return "無效的選項，請重新輸入 (1 或 2)，或輸入'取消'。"
+                return "無效的選項，請重新輸入 (1 或 2)，或輸入'取消'。", get_quick_reply(["名稱", "地點", "取消"])
         
         elif stage == "awaiting_new_value":
             field = state.get("field")
@@ -88,12 +100,12 @@ def handle_stateful_message(user_id, text):
             
             if db.edit_item(user_id, item_id, field, value):
                 del user_states[user_id]
-                return f"待辦事項 [{item_id}] 已更新。"
+                return f"待辦事項 [{item_id}] 已更新。", None
             else:
                 del user_states[user_id] # Clear state even on failure
-                return f"更新失敗，找不到項目 [{item_id}] 或欄位不正確。"
+                return f"更新失敗，找不到項目 [{item_id}] 或欄位不正確。", None
 
-    return "發生未知錯誤，請取消後重試。"
+    return "發生未知錯誤，請取消後重試。", None
 
 
 @app.get("/health")
@@ -120,6 +132,7 @@ def callback():
             msg = getattr(event, "message", None)
             text = getattr(msg, "text", None) if msg else None
             reply_token = getattr(event, "reply_token", None)
+            quick_reply = None
 
             if text is None:
                 reply_text = "我目前只處理文字訊息，請傳文字給我。"
@@ -127,7 +140,7 @@ def callback():
                 t = text.strip()
 
                 if user_id in user_states:
-                    reply_text = handle_stateful_message(user_id, t)
+                    reply_text, quick_reply = handle_stateful_message(user_id, t)
                 # 快捷指令判斷
                 elif "++" in t:
                     parts = [p.strip() for p in t.split("++")]
@@ -182,6 +195,7 @@ def callback():
                             "data": {}
                         }
                         reply_text = "好的，我們來新增一個待辦事項。請輸入主分類（或輸入'取消'）："
+                        quick_reply = get_quick_reply(["取消"])
                     elif t_lower.startswith("編輯 ") or t_lower.startswith("edit "):
                         try:
                             item_id_str = t.split(" ")[1]
@@ -202,6 +216,7 @@ def callback():
                                     "2. 地點\n\n"
                                     "請輸入選項（或輸入'取消'）"
                                 )
+                                quick_reply = get_quick_reply(["名稱", "地點", "取消"])
                             else:
                                 reply_text = f"找不到待辦事項 [{item_id}]。"
                         except (IndexError, ValueError):
@@ -224,6 +239,7 @@ def callback():
                             reply_text = "完成指令格式錯誤，請使用 '完成 <編號1>,<編號2>...'"
                     elif t_lower == "help":
                         reply_text = "指令：\n- 新增 (逐步新增)\n- 編輯 <編號>\n- 刪除 <編號1>,<編號2>...\n- 完成 <編號1>,<編號2>...\n- list (列出項目)\n- 快捷指令: 主分類 + 子分類 + 名稱 [+ 地點]\n- 多筆新增: 主分類 + 子分類 [+ 地點] ++ 項目1, 項目2, ..."
+                        quick_reply = get_quick_reply(["新增", "list", "help"])
                     elif t_lower.startswith("echo "):
                         reply_text = t[5:]
                     elif t_lower.startswith("list"):
@@ -249,6 +265,7 @@ def callback():
                                     line += f" - 完成於 {completed_time}"
                                 lines.append(line)
                             reply_text = "\n".join(lines).strip()
+                        quick_reply = get_quick_reply(["新增", "list", "help"])
                     else:
                         reply_text = f"收到：{text}"
 
@@ -256,9 +273,12 @@ def callback():
                 try:
                     with ApiClient(Configuration(access_token=CHANNEL_ACCESS_TOKEN)) as api_client:
                         messaging_api = MessagingApi(api_client)
+                        messages = [V3TextMessage(type="text", text=reply_text)]
+                        if quick_reply:
+                            messages[0].quick_reply = quick_reply
                         req = ReplyMessageRequest(
                             reply_token=reply_token,
-                            messages=[V3TextMessage(type="text", text=reply_text)]
+                            messages=messages
                         )
                         messaging_api.reply_message(req)
                 except Exception as e:
@@ -272,7 +292,11 @@ def callback():
                         messaging_api = MessagingApi(api_client)
                         req = ReplyMessageRequest(
                             reply_token=reply_token,
-                            messages=[V3TextMessage(type="text", text="謝謝你加我為好友！輸入 help 查看指令。")]
+                            messages=[V3TextMessage(
+                                type="text",
+                                text="謝謝你加我為好友！輸入 help 查看指令。",
+                                quick_reply=get_quick_reply(["新增", "list", "help"])
+                            )]
                         )
                         messaging_api.reply_message(req)
                 except Exception as e:
