@@ -12,9 +12,10 @@ try:
 except Exception:
     from linebot.v3.webhooks import WebhookParser
 
-import database as db
-
+from dotenv import load_dotenv
 load_dotenv()
+
+import database as db
 
 CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")

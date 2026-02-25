@@ -150,11 +150,26 @@ class SqliteEngine:
 
 class PostgresEngine:
     def __init__(self):
-        self.db_url = os.getenv("DATABASE_URL")
+        url = os.getenv("DATABASE_URL")
+        if url and url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
+        self.db_url = url
         print("Using PostgreSQL database for production.")
 
     def _connect(self):
-        return psycopg2.connect(self.db_url)
+        try:
+            return psycopg2.connect(self.db_url)
+        except Exception as e:
+            # 安全地顯示 URL 格式錯誤，隱藏密碼
+            display_url = self.db_url
+            if self.db_url and "@" in self.db_url:
+                prefix = self.db_url.split("@")[0].split(":")[0] # postgresql
+                suffix = self.db_url.split("@")[-1] # host:port/db
+                display_url = f"{prefix}://****@{suffix}"
+            print(f"PostgreSQL 連線失敗！")
+            print(f"使用的 URL 格式: {display_url}")
+            print(f"錯誤訊息: {e}")
+            raise e
 
     def init_db(self):
         conn = self._connect()
@@ -290,9 +305,18 @@ class PostgresEngine:
 
 # --- DB Manager ---
 # This will decide which database engine to use based on environment variables.
-if os.getenv("DATABASE_URL"):
+# Priority:
+# 1. APP_ENV="production" -> Use Postgres (Requires DATABASE_URL)
+# 2. APP_ENV="development" or not set -> Use SQLite (Default)
+
+app_env = os.getenv("APP_ENV", "development").lower()
+database_url = os.getenv("DATABASE_URL")
+
+if app_env == "production" and database_url:
     db_engine = PostgresEngine()
 else:
+    if app_env == "production" and not database_url:
+        print("Warning: APP_ENV is set to 'production' but DATABASE_URL is missing! Falling back to SQLite.")
     db_engine = SqliteEngine()
 
 # --- Public API ---
