@@ -238,7 +238,7 @@ def callback():
                         except (IndexError, ValueError):
                             reply_text = "完成指令格式錯誤，請使用 '完成 <編號1>,<編號2>...'"
                     elif t_lower == "help":
-                        reply_text = "指令：\n- 新增 (逐步新增)\n- 編輯 <編號>\n- 刪除 <編號1>,<編號2>...\n- 完成 <編號1>,<編號2>...\n- list (列出項目)\n- list 主分類/子分類\n- 快捷指令: 主分類 + 子分類 + 名稱 [+ 地點]\n- 多筆新增: 主分類 + 子分類 [+ 地點] ++ 項目1, 項目2, ..."
+                        reply_text = "指令：\n- 新增 (逐步新增)\n- 編輯 <編號>\n- 刪除 <編號1>,<編號2>...\n- 完成 <編號1>,<編號2>...\n- list (列出項目)\n- list 主分類/子分類\n- 新增 (快速新增): 主分類 + 子分類 + 名稱 [+ 地點]\n- 新增 (多筆新增): 主分類 + 子分類 [+ 地點] ++ 項目1, 項目2, ..."
                         quick_reply = get_quick_reply(["新增", "list", "help"])
                     elif t_lower == "contact":
                         reply_text = "如有任何問題，歡迎透過以下方式聯繫我們：\n📧 Email: example@email.com\n🌐 Website: https://github.com/your-repo"
