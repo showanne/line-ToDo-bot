@@ -300,8 +300,9 @@ def callback():
 
                                 status = "✅" if i[3] else "📝"
                                 sub_cats = i[7] or "無"
-                                tags = " #" + i[8] if i[8] else ""
-                                line = f"{status} [{i[0]}] {i[1]}{tags} ({sub_cats})"
+                                tags = " #" + i[8].replace(', #', ' #') if i[8] else ""
+                                place = f" @{i[4]}" if i[4] else ""
+                                line = f"{status} [{i[0]}] {i[1]}{tags}{place} ({sub_cats})"
                                 if i[3]:
                                     completed_time = datetime.fromisoformat(i[5]).strftime('%Y-%m-%d %H:%M')
                                     line += f" - 完成於 {completed_time}"
