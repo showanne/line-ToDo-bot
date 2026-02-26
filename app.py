@@ -1,5 +1,6 @@
 # app.py
 import os
+import re
 from datetime import datetime
 from flask import Flask, request, abort, jsonify
 from dotenv import load_dotenv
@@ -36,15 +37,25 @@ parser = WebhookParser(channel_secret=CHANNEL_SECRET)
 db.init_db()
 
 # ------------------------
-# Flask + LINE Webhook
+# Helper Functions
 # ------------------------
-user_states = {}
+def extract_tags(text):
+    """Extracts tags starting with # and returns them as a list, and the cleaned text."""
+    tags = re.findall(r'#([^\s#]+)', text)
+    # Remove tags from the text to avoid them being part of titles/places
+    clean_text = re.sub(r'#[^\s#]+', '', text).strip()
+    return tags, clean_text
 
 def get_quick_reply(labels):
     if not labels:
         return None
     items = [QuickReplyItem(action=MessageAction(label=label, text=label)) for label in labels]
     return QuickReply(items=items)
+
+# ------------------------
+# Flask + LINE Webhook
+# ------------------------
+user_states = {}
 
 def handle_stateful_message(user_id, text):
     state = user_states[user_id]
@@ -61,21 +72,25 @@ def handle_stateful_message(user_id, text):
         if stage == "awaiting_category":
             state["data"]["category"] = t
             state["stage"] = "awaiting_sub_category"
-            return "請輸入子分類：", get_quick_reply(["取消"])
+            return "請輸入子分類（多個請用逗號隔開）：", get_quick_reply(["取消"])
         elif stage == "awaiting_sub_category":
-            state["data"]["sub_category"] = t
+            state["data"]["sub_categories"] = [s.strip() for s in t.split(",") if s.strip()]
             state["stage"] = "awaiting_title"
             return "請輸入待辦事項名稱：", get_quick_reply(["取消"])
         elif stage == "awaiting_title":
-            state["data"]["title"] = t
+            tags, clean_title = extract_tags(t)
+            state["data"]["title"] = clean_title
+            state["data"]["tags"] = tags
             state["stage"] = "awaiting_place"
             return "請輸入地點（若無請輸入'無'）：", get_quick_reply(["無", "取消"])
         elif stage == "awaiting_place":
             place = t if t.lower() not in ["無", "none", "skip"] else None
             data = state["data"]
-            db.add_item(user_id, data["category"], data["sub_category"], data["title"], place=place)
+            db.add_item(user_id, data["category"], data["sub_categories"], data["title"], tags=data["tags"], place=place)
             del user_states[user_id]
-            return f"已新增：{data['title']} ({data['category']}/{data['sub_category']})" + (f"，地點：{place}" if place else ""), None
+            sub_cat_str = ", ".join(data["sub_categories"])
+            tag_str = " #" + " #".join(data["tags"]) if data["tags"] else ""
+            return f"已新增：{data['title']} ({data['category']}/{sub_cat_str}){tag_str}" + (f"，地點：{place}" if place else ""), None
 
     # --- Edit Item Flow ---
     elif action == "edit_item":
@@ -148,42 +163,52 @@ def callback():
                         context_parts = [p.strip() for p in parts[0].split("+")]
                         if len(context_parts) >= 2:
                             category = context_parts[0]
-                            sub_category = context_parts[1]
+                            sub_category_raw = context_parts[1]
                             place = None
                             if len(context_parts) >= 3:
                                 place = context_parts[2]
 
-                            items = [i.strip() for i in parts[1].split(",")]
+                            # Sub categories can be a list separated by comma
+                            sub_categories = [s.strip() for s in sub_category_raw.split(",") if s.strip()]
+
+                            items_raw = [i.strip() for i in parts[1].split(",")]
                             added_count = 0
-                            for item_title in items:
-                                if item_title: # Avoid adding empty items
-                                    db.add_item(user_id, category, sub_category, item_title, place=place)
+                            for item_str in items_raw:
+                                if item_str:
+                                    tags, clean_title = extract_tags(item_str)
+                                    db.add_item(user_id, category, sub_categories, clean_title, tags=tags, place=place)
                                     added_count += 1
                             if added_count > 0:
-                                reply_text = f"已在 {category}/{sub_category}"
+                                sub_cat_str = ", ".join(sub_categories)
+                                reply_text = f"已在 {category}/{sub_cat_str}"
                                 if place:
                                     reply_text += f" (地點: {place})"
                                 reply_text += f" 新增 {added_count} 個項目。"
                             else:
                                 reply_text = "沒有可新增的項目。"
                         else:
-                            reply_text = "快捷指令格式錯誤，範例：主分類 + 子分類 [+ 地點] ++ 項目1, 項目2, ..."
+                            reply_text = "快捷指令格式錯誤，範例：主分類 + 子分類1,子分類2 [+ 地點] ++ 項目1 #標籤, 項目2..."
                     else:
-                        reply_text = "快捷指令格式錯誤，範例：主分類 + 子分類 [+ 地點] ++ 項目1, 項目2, ..."
+                        reply_text = "快捷指令格式錯誤，範例：主分類 + 子分類1,子分類2 [+ 地點] ++ 項目1 #標籤, 項目2..."
                 elif "+" in t:
                     parts = [p.strip() for p in t.split("+")]
                     if len(parts) >= 3:
                         category = parts[0]
-                        sub_category = parts[1]
-                        title = parts[2]
+                        sub_category_raw = parts[1]
+                        title_raw = parts[2]
                         place = None
                         if len(parts) >= 4:
                             place = parts[3]
 
-                        db.add_item(user_id, category, sub_category, title, done=0, place=place)
-                        reply_text = f"已新增：{title} ({category}/{sub_category})" + (f"，地點：{place}" if place else "")
+                        sub_categories = [s.strip() for s in sub_category_raw.split(",") if s.strip()]
+                        tags, clean_title = extract_tags(title_raw)
+
+                        db.add_item(user_id, category, sub_categories, clean_title, tags=tags, done=0, place=place)
+                        sub_cat_str = ", ".join(sub_categories)
+                        tag_str = " #" + " #".join(tags) if tags else ""
+                        reply_text = f"已新增：{clean_title}{tag_str} ({category}/{sub_cat_str})" + (f"，地點：{place}" if place else "")
                     else:
-                        reply_text = "快捷指令格式錯誤，範例：主分類 + 子分類 + 名稱 [+ 地點]"
+                        reply_text = "快捷指令格式錯誤，範例：主分類 + 子分類1,子分類2 + 名稱 #標籤 [+ 地點]"
                 else:
                     t_lower = t.lower()
                     if t_lower == "ping":
@@ -207,9 +232,12 @@ def callback():
                                     "stage": "awaiting_field_choice",
                                     "item_id": item_id
                                 }
+                                sub_cat_str = item['sub_category_names'] or '無'
+                                tag_str = " #" + item['tag_names'] if item['tag_names'] else '無'
                                 reply_text = (
                                     f"您正要編輯項目 [{item['id']}]：{item['title']}\n"
-                                    f"分類：{item['category_name']}/{item['sub_category_name']}\n"
+                                    f"分類：{item['category_name']}/{sub_cat_str}\n"
+                                    f"標籤：{tag_str}\n"
                                     f"地點：{item['place'] or '未設定'}\n\n"
                                     "您想編輯哪個欄位？\n"
                                     "1. 名稱\n"
@@ -238,7 +266,7 @@ def callback():
                         except (IndexError, ValueError):
                             reply_text = "完成指令格式錯誤，請使用 '完成 <編號1>,<編號2>...'"
                     elif t_lower == "help":
-                        reply_text = "指令：\n- 新增 (逐步新增)\n- 編輯 <編號>\n- 刪除 <編號1>,<編號2>...\n- 完成 <編號1>,<編號2>...\n- list (列出項目)\n- list 主分類/子分類\n- 新增 (快速新增): 主分類 + 子分類 + 名稱 [+ 地點]\n- 新增 (多筆新增): 主分類 + 子分類 [+ 地點] ++ 項目1, 項目2, ..."
+                        reply_text = "指令：\n- 新增 (逐步新增)\n- 編輯 <編號>\n- 刪除 <編號1>,<編號2>...\n- 完成 <編號1>,<編號2>...\n- list (列出項目)\n- list 主分類/子分類\n- 新增 (快捷): 主分類 + 子1,子2 + 名稱 #標籤 [+ 地點]\n- 多筆新增: 主分類 + 子1,子2 [+ 地點] ++ 項目1 #標籤, 項目2..."
                         quick_reply = get_quick_reply(["新增", "list", "help"])
                     elif t_lower == "contact":
                         reply_text = "如有任何問題，歡迎透過以下方式聯繫我們：\n📧 Email: example@email.com\n🌐 Website: https://github.com/your-repo"
@@ -264,15 +292,16 @@ def callback():
                             lines = []
                             current_category = None
                             for i in items:
-                                # 索引: 6=主分類名, 7=子分類名
+                                # i: (id, title, desc, done, place, completed_date, cat_name, sub_cats, tags)
                                 category_name = i[6]
                                 if category_name != current_category:
                                     lines.append(f"\n--- {category_name} ---")
                                     current_category = category_name
 
                                 status = "✅" if i[3] else "📝"
-                                # 索引: 0=id, 1=title, 3=done, 5=completed_date, 7=sub_category_name
-                                line = f"{status} [{i[0]}] {i[1]} ({i[7]})"
+                                sub_cats = i[7] or "無"
+                                tags = " #" + i[8] if i[8] else ""
+                                line = f"{status} [{i[0]}] {i[1]}{tags} ({sub_cats})"
                                 if i[3]:
                                     completed_time = datetime.fromisoformat(i[5]).strftime('%Y-%m-%d %H:%M')
                                     line += f" - 完成於 {completed_time}"
@@ -328,6 +357,7 @@ if __name__ == "__main__":
     if debug_mode:
         try:
             from pyngrok import ngrok
+            ngrok_authtoken = os.getenv("NGROK_AUThtoken") # Note: was NGROK_AUTHTOKEN in previous read, fixing case if needed but stick to .env
             ngrok_authtoken = os.getenv("NGROK_AUTHTOKEN")
             if ngrok_authtoken:
                 ngrok.set_auth_token(ngrok_authtoken)
