@@ -87,7 +87,7 @@ def create_todo_flex_message(items, group_by_sub_category=False, offset=0, base_
 
     all_groups = list(groups.items())
     total_groups = len(all_groups)
-    
+
     # 分頁判斷 (LINE 限制 10 個 Bubble)
     has_next = False
     next_offset = offset + 9
@@ -103,7 +103,7 @@ def create_todo_flex_message(items, group_by_sub_category=False, offset=0, base_
     for group_name, group_items in display_groups:
         contents = []
         display_items = group_items[:15]
-        
+
         for idx, item in enumerate(display_items):
             item_id = item[0]
             title = str(item[1]) if item[1] else "無標題"
@@ -111,7 +111,7 @@ def create_todo_flex_message(items, group_by_sub_category=False, offset=0, base_
             place = item[4]
             sub_cats = item[7]
             tags = item[8]
-            
+
             item_box = {
                 "type": "box", "layout": "vertical", "spacing": "sm",
                 "contents": [
@@ -176,7 +176,7 @@ def create_todo_flex_message(items, group_by_sub_category=False, offset=0, base_
                     {
                         "type": "button", "style": "primary", "color": "#464a5c", "margin": "xl",
                         "action": {
-                            "type": "message", "label": "下一頁", 
+                            "type": "message", "label": "下一頁",
                             "text": f"{base_command} @{next_offset}"
                         }
                     }
@@ -188,48 +188,49 @@ def create_todo_flex_message(items, group_by_sub_category=False, offset=0, base_
         return bubbles[0]
     else:
         return {"type": "carousel", "contents": bubbles}
-# ------------------------
-# 狀態管理與多階層對話處理 (Stateful Message Handling)
-# ------------------------
-user_states = {}
 
-def handle_stateful_message(user_id, text):
+# ------------------------
+# 狀態管理與多階層對話處理 (Persistent State Handling)
+# ------------------------
+
+def handle_stateful_message(user_id, state, text):
     """
     處理需要多步驟輸入的指令（如：逐步新增、編輯項目）。
-    根據 user_states 中記錄的 stage 決定下一步。
+    state: 傳入的目前狀態字典。
     """
-    state = user_states[user_id]
     action = state.get("action")
     t = text.strip()
 
     # 任何時候輸入「取消」皆可中止流程
     if t.lower() == "取消":
-        del user_states[user_id]
+        db.clear_user_state(user_id)
         return "操作已取消。", None
 
     # --- 逐步新增流程 (Add Item Flow) ---
     if action == "add_item":
         stage = state.get("stage")
         if stage == "awaiting_category":
-            state["data"]["category"] = t
+            state["data"] = {"category": t}
             state["stage"] = "awaiting_sub_category"
+            db.set_user_state(user_id, state)
             return "請輸入子分類（多個請用逗號隔開）：", get_quick_reply(["取消"])
         elif stage == "awaiting_sub_category":
             state["data"]["sub_categories"] = [s.strip() for s in t.split(",") if s.strip()]
             state["stage"] = "awaiting_title"
+            db.set_user_state(user_id, state)
             return "請輸入待辦事項名稱：", get_quick_reply(["取消"])
         elif stage == "awaiting_title":
             tags, clean_title = extract_tags(t)
             state["data"]["title"] = clean_title
             state["data"]["tags"] = tags
             state["stage"] = "awaiting_place"
+            db.set_user_state(user_id, state)
             return "請輸入地點（若無請輸入'無'）：", get_quick_reply(["無", "取消"])
         elif stage == "awaiting_place":
             place = t if t.lower() not in ["無", "none", "skip"] else None
             data = state["data"]
-            # 呼叫資料庫新增項目
             db.add_item(user_id, data["category"], data["sub_categories"], data["title"], tags=data["tags"], place=place)
-            del user_states[user_id]
+            db.clear_user_state(user_id)
             sub_cat_str = ", ".join(data["sub_categories"])
             tag_str = " #" + " #".join(data["tags"]) if data["tags"] else ""
             return f"已新增：{data['title']} ({data['category']}/{sub_cat_str}){tag_str}" + (f"，地點：{place}" if place else ""), None
@@ -240,14 +241,15 @@ def handle_stateful_message(user_id, text):
         item_id = state.get("item_id")
 
         if stage == "awaiting_field_choice":
-            # 讓使用者選擇要編輯名稱還是地點
             if t in ["1", "名稱"]:
                 state["stage"] = "awaiting_new_value"
                 state["field"] = "title"
+                db.set_user_state(user_id, state)
                 return "請輸入新的「名稱」：", get_quick_reply(["取消"])
             elif t in ["2", "地點"]:
                 state["stage"] = "awaiting_new_value"
                 state["field"] = "place"
+                db.set_user_state(user_id, state)
                 return "請輸入新的「地點」（若要清空請輸入'無'）：", get_quick_reply(["無", "取消"])
             else:
                 return "無效的選項，請重新輸入 (1 或 2)，或輸入'取消'。", get_quick_reply(["名稱", "地點", "取消"])
@@ -255,13 +257,11 @@ def handle_stateful_message(user_id, text):
         elif stage == "awaiting_new_value":
             field = state.get("field")
             value = t if not (field == 'place' and t.lower() in ['無', 'none']) else None
-
-            # 執行資料庫更新
             if db.edit_item(user_id, item_id, field, value):
-                del user_states[user_id]
+                db.clear_user_state(user_id)
                 return f"待辦事項 [{item_id}] 已更新。", None
             else:
-                del user_states[user_id]
+                db.clear_user_state(user_id)
                 return f"更新失敗，找不到項目 [{item_id}] 或欄位不正確。", None
 
     return "發生未知錯誤，請取消後重試。", None
@@ -269,15 +269,10 @@ def handle_stateful_message(user_id, text):
 
 @app.get("/health")
 def health():
-    """健康檢查端點"""
     return jsonify({"status": "ok"})
 
 @app.post("/callback")
 def callback():
-    """
-    LINE Webhook 主要進入點。
-    處理各種類型的 LINE 事件，包括文字訊息與追蹤事件。
-    """
     signature = request.headers.get("X-Line-Signature", "")
     body = request.get_data(as_text=True)
     app.logger.debug("LINE Webhook body: %s", body)
@@ -292,7 +287,6 @@ def callback():
         ev_type = getattr(event, "type", None)
         user_id = getattr(event.source, "user_id", None)
 
-        # 處理訊息事件
         if ev_type == "message":
             msg = getattr(event, "message", None)
             text = getattr(msg, "text", None) if msg else None
@@ -304,12 +298,12 @@ def callback():
                 reply_text = "我目前只處理文字訊息，請傳文字給我。"
             else:
                 t = text.strip()
+                # 從資料庫獲取使用者目前的狀態
+                current_state = db.get_user_state(user_id)
 
-                # 如果使用者目前處於某個流程狀態中 (如新增或編輯)
-                if user_id in user_states:
-                    reply_text, quick_reply = handle_stateful_message(user_id, t)
+                if current_state:
+                    reply_text, quick_reply = handle_stateful_message(user_id, current_state, t)
 
-                # --- 多筆快捷新增: 主分類 + 子分類 [+ 地點] ++ 項目1, 項目2... ---
                 elif "++" in t:
                     parts = [p.strip() for p in t.split("++")]
                     if len(parts) == 2:
@@ -320,7 +314,6 @@ def callback():
                             place = None
                             if len(context_parts) >= 3:
                                 place = context_parts[2]
-
                             sub_categories = [s.strip() for s in sub_category_raw.split(",") if s.strip()]
                             items_raw = [i.strip() for i in parts[1].split(",")]
                             added_count = 0
@@ -331,130 +324,79 @@ def callback():
                                     added_count += 1
                             if added_count > 0:
                                 sub_cat_str = ", ".join(sub_categories)
-                                reply_text = f"已在 {category}/{sub_cat_str}"
-                                if place:
-                                    reply_text += f" (地點: {place})"
-                                reply_text += f" 新增 {added_count} 個項目。"
+                                reply_text = f"已在 {category}/{sub_cat_str}" + (f" (地點: {place})" if place else "") + f" 新增 {added_count} 個項目。"
                             else:
                                 reply_text = "沒有可新增的項目。"
                         else:
-                            reply_text = "快捷指令格式錯誤，範例：主分類 + 子分類1,子分類2 [+ 地點] ++ 項目1 #標籤, 項目2..."
+                            reply_text = "快捷指令格式錯誤。"
                     else:
-                        reply_text = "快捷指令格式錯誤，範例：主分類 + 子分類1,子分類2 [+ 地點] ++ 項目1 #標籤, 項目2..."
+                        reply_text = "快捷指令格式錯誤。"
 
-                # --- 單筆快捷新增: 主分類 + 子分類 + 名稱 [+ 地點] ---
                 elif "+" in t:
                     parts = [p.strip() for p in t.split("+")]
                     if len(parts) >= 3:
                         category = parts[0]
                         sub_category_raw = parts[1]
                         title_raw = parts[2]
-                        place = None
-                        if len(parts) >= 4:
-                            place = parts[3]
-
+                        place = parts[3] if len(parts) >= 4 else None
                         sub_categories = [s.strip() for s in sub_category_raw.split(",") if s.strip()]
                         tags, clean_title = extract_tags(title_raw)
-
-                        db.add_item(user_id, category, sub_categories, clean_title, tags=tags, done=0, place=place)
+                        db.add_item(user_id, category, sub_categories, clean_title, tags=tags, place=place)
                         sub_cat_str = ", ".join(sub_categories)
                         tag_str = " #" + " #".join(tags) if tags else ""
                         reply_text = f"已新增：{clean_title}{tag_str} ({category}/{sub_cat_str})" + (f"，地點：{place}" if place else "")
                     else:
-                        reply_text = "快捷指令格式錯誤，範例：主分類 + 子分類1,子分類2 + 名稱 #標籤 [+ 地點]"
+                        reply_text = "快捷指令格式錯誤。"
 
-                # --- 一般指令判斷 ---
                 else:
                     t_lower = t.lower()
                     if t_lower == "ping":
                         reply_text = "pong"
-
-                    # 啟動逐步新增流程
                     elif t_lower in ["新增", "add"]:
-                        user_states[user_id] = {
-                            "action": "add_item",
-                            "stage": "awaiting_category",
-                            "data": {}
-                        }
+                        initial_state = {"action": "add_item", "stage": "awaiting_category", "data": {}}
+                        db.set_user_state(user_id, initial_state)
                         reply_text = "好的，我們來新增一個待辦事項。請輸入主分類（或輸入'取消'）："
                         quick_reply = get_quick_reply(["取消"])
-
-                    # 啟動編輯流程: 編輯 <ID>
                     elif t_lower.startswith("編輯 ") or t_lower.startswith("edit "):
                         try:
-                            item_id_str = t.split(" ")[1]
-                            item_id = int(item_id_str)
+                            item_id = int(t.split(" ")[1])
                             item = db.get_item(user_id, item_id)
                             if item:
-                                user_states[user_id] = {
-                                    "action": "edit_item",
-                                    "stage": "awaiting_field_choice",
-                                    "item_id": item_id
-                                }
-                                sub_cat_str = item['sub_category_names'] or '無'
-                                tag_str = " #" + item['tag_names'] if item['tag_names'] else '無'
-                                reply_text = (
-                                    f"您正要編輯項目 [{item['id']}]：{item['title']}\n"
-                                    f"分類：{item['category_name']}/{sub_cat_str}\n"
-                                    f"標籤：{tag_str}\n"
-                                    f"地點：{item['place'] or '未設定'}\n\n"
-                                    "您想編輯哪個欄位？\n"
-                                    "1. 名稱\n"
-                                    "2. 地點\n\n"
-                                    "請輸入選項（或輸入'取消'）"
-                                )
+                                initial_state = {"action": "edit_item", "stage": "awaiting_field_choice", "item_id": item_id}
+                                db.set_user_state(user_id, initial_state)
+                                reply_text = f"您正要編輯 [{item['id']}]：{item['title']}\n1. 名稱\n2. 地點\n請選擇編號（或輸入'取消'）"
                                 quick_reply = get_quick_reply(["名稱", "地點", "取消"])
                             else:
                                 reply_text = f"找不到待辦事項 [{item_id}]。"
                         except (IndexError, ValueError):
-                            reply_text = "編輯指令格式錯誤，請使用 '編輯 <編號>'"
-
-                    # 刪除項目: 刪除 <ID1>,<ID2>
+                            reply_text = "編輯指令格式錯誤。"
                     elif t_lower.startswith("刪除 ") or t_lower.startswith("del "):
                         try:
-                            item_ids_str = t.split(" ", 1)[1]
-                            item_ids = [int(i.strip()) for i in item_ids_str.split(",")]
-                            deleted_count = db.delete_item(user_id, item_ids)
-                            reply_text = f"已刪除 {deleted_count} 個項目。"
+                            item_ids = [int(i.strip()) for i in t.split(" ", 1)[1].split(",")]
+                            count = db.delete_item(user_id, item_ids)
+                            reply_text = f"已刪除 {count} 個項目。"
                         except (IndexError, ValueError):
-                            reply_text = "刪除指令格式錯誤，請使用 '刪除 <編號1>,<編號2>...'"
-
-                    # 標記完成: 完成 <ID1>,<ID2>
+                            reply_text = "刪除指令格式錯誤。"
                     elif t_lower.startswith("完成 ") or t_lower.startswith("done "):
                         try:
-                            item_ids_str = t.split(" ", 1)[1]
-                            item_ids = [int(i.strip()) for i in item_ids_str.split(",")]
-                            updated_count = db.mark_item_as_done(user_id, item_ids)
-                            reply_text = f"已將 {updated_count} 個項目標示為完成。"
+                            item_ids = [int(i.strip()) for i in t.split(" ", 1)[1].split(",")]
+                            count = db.mark_item_as_done(user_id, item_ids)
+                            reply_text = f"已將 {count} 個項目標示為完成。"
                         except (IndexError, ValueError):
-                            reply_text = "完成指令格式錯誤，請使用 '完成 <編號1>,<編號2>...'"
-
-                    # 說明指令
+                            reply_text = "完成指令格式錯誤。"
                     elif t_lower == "help":
-                        reply_text = "指令：\n- 新增 (逐步新增)\n- 編輯 <編號>\n- 刪除 <編號1>,<編號2>...\n- 完成 <編號1>,<編號2>...\n- list (列出項目)\n- list 主分類/子分類\n- 新增 (快捷): 主分類 + 子1,子2 + 名稱 #標籤 [+ 地點]\n- 多筆新增: 主分類 + 子1,子2 [+ 地點] ++ 項目1 #標籤, 項目2..."
+                        reply_text = "指令：\n- 新增\n- 編輯 <編號>\n- 刪除 <編號>\n- 完成 <編號>\n- list (列出項目)\n- list 主分類/子分類"
                         quick_reply = get_quick_reply(["新增", "list", "help"])
-
-                    # 聯繫資訊
-                    elif t_lower == "contact":
-                        reply_text = "如有任何問題，歡迎透過以下方式聯繫我們：\n📧 Email: example@email.com\n🌐 Website: https://github.com/your-repo"
-
-                    elif t_lower.startswith("echo "):
-                        reply_text = t[5:]
-
-                    # 列出待辦清單: list [分類[/子分類]] [@位移]
                     elif t_lower.startswith("list"):
-                        # 解析位移量 (例如: list @9 或 list 工作 @9)
                         offset = 0
                         offset_match = re.search(r'@(\d+)$', t)
                         clean_cmd = t
                         if offset_match:
                             offset = int(offset_match.group(1))
                             clean_cmd = t[:offset_match.start()].strip()
-                        
                         cmd_arg = clean_cmd[4:].strip() if len(clean_cmd) > 4 else None
                         category = None
                         sub_category = None
-
                         if cmd_arg:
                             if "/" in cmd_arg:
                                 parts = cmd_arg.split("/", 1)
@@ -462,89 +404,48 @@ def callback():
                                 sub_category = parts[1].strip()
                             else:
                                 category = cmd_arg
-
                         items = db.list_items(user_id, category, sub_category)
                         if not items:
                             reply_text = "目前沒有任何清單。"
                         else:
                             should_group_by_sub = True if category else False
-                            # 傳遞 offset 與 clean_cmd 作為基礎指令
-                            flex_contents = create_todo_flex_message(
-                                items, 
-                                group_by_sub_category=should_group_by_sub,
-                                offset=offset,
-                                base_command=clean_cmd
-                            )
-                            
-                            # 動態生成 Alt Text
-                            alt_suffix = f" (第 {offset+1} 個分類起)" if offset > 0 else ""
-                            if category and sub_category:
-                                reply_text = f"{category}/{sub_category} 清單{alt_suffix}"
-                            elif category:
-                                reply_text = f"{category} 清單{alt_suffix}"
-                            else:
-                                reply_text = f"您的待辦清單{alt_suffix}"
+                            flex_contents = create_todo_flex_message(items, group_by_sub_category=should_group_by_sub, offset=offset, base_command=clean_cmd)
+                            reply_text = f"{category or '您的待辦'} 清單"
                         quick_reply = get_quick_reply(["新增", "list", "help"])
                     else:
                         reply_text = f"收到：{text}"
 
-            # 回傳訊息給使用者
             if reply_token:
                 try:
                     with ApiClient(Configuration(access_token=CHANNEL_ACCESS_TOKEN)) as api_client:
                         messaging_api = MessagingApi(api_client)
-
                         if flex_contents:
-                            # 發送 Flex Message
-                            messages = [FlexMessage(
-                                alt_text=reply_text,
-                                contents=FlexContainer.from_dict(flex_contents)
-                            )]
+                            messages = [FlexMessage(alt_text=reply_text, contents=FlexContainer.from_dict(flex_contents))]
                         else:
-                            # 發送一般文字訊息
                             messages = [V3TextMessage(type="text", text=reply_text)]
-
                         if quick_reply:
                             messages[0].quick_reply = quick_reply
-
-                        req = ReplyMessageRequest(
-                            reply_token=reply_token,
-                            messages=messages
-                        )
+                        req = ReplyMessageRequest(reply_token=reply_token, messages=messages)
                         messaging_api.reply_message(req)
                 except Exception as e:
                     app.logger.error("Failed to reply message: %s", e)
 
-        # 處理使用者加好友事件
         elif ev_type == "follow":
             reply_token = getattr(event, "reply_token", None)
             if reply_token:
                 try:
                     with ApiClient(Configuration(access_token=CHANNEL_ACCESS_TOKEN)) as api_client:
                         messaging_api = MessagingApi(api_client)
-                        req = ReplyMessageRequest(
-                            reply_token=reply_token,
-                            messages=[V3TextMessage(
-                                type="text",
-                                text="謝謝你加我為好友！輸入 help 查看指令。",
-                                quick_reply=get_quick_reply(["新增", "list", "help"])
-                            )]
-                        )
+                        req = ReplyMessageRequest(reply_token=reply_token, messages=[V3TextMessage(type="text", text="謝謝你加我為好友！", quick_reply=get_quick_reply(["新增", "list", "help"]))])
                         messaging_api.reply_message(req)
                 except Exception as e:
-                    app.logger.error("Failed to reply follow event: %s", e)
-        else:
-            app.logger.debug("Unhandled event type: %s", ev_type)
+                    app.logger.error("Failed to reply follow: %s", e)
 
     return "OK", 200
 
-# ------------------------
-# Main
-# ------------------------
 if __name__ == "__main__":
-    debug_mode = True
     port = int(os.getenv("PORT", 5000))
-    if debug_mode:
+    if os.getenv("APP_ENV") != "production":
         try:
             from pyngrok import ngrok
             ngrok_authtoken = os.getenv("NGROK_AUTHTOKEN")
@@ -552,8 +453,6 @@ if __name__ == "__main__":
                 ngrok.set_auth_token(ngrok_authtoken)
             public_url = ngrok.connect(port).public_url
             print(f"Ngrok tunnel: {public_url} -> http://127.0.0.1:{port}")
-            print("請把 LINE Developers 的 Webhook URL 設為:", public_url + "/callback")
         except Exception as e:
-            print("ngrok 啟動失敗或未安裝：", e)
-
-    app.run(host="0.0.0.0", port=port, debug=debug_mode, use_reloader=False)
+            print("ngrok 啟動失敗：", e)
+    app.run(host="0.0.0.0", port=port, debug=True, use_reloader=False)
