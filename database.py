@@ -298,3 +298,35 @@ def list_sub_categories(user_id, category_name=None):
         return results
     finally:
         session.close()
+
+def rename_category(user_id, old_name, new_name):
+    """更改主分類名稱"""
+    session = db_session()
+    try:
+        cat = session.query(Category).filter(Category.user_id == user_id, Category.name == old_name).first()
+        if not cat: return False
+        cat.name = new_name
+        session.commit()
+        return True
+    except Exception:
+        session.rollback()
+        return False
+    finally:
+        session.close()
+
+def rename_sub_category(user_id, category_name, old_name, new_name):
+    """更改特定主分類下的子分類名稱"""
+    session = db_session()
+    try:
+        cat = session.query(Category).filter(Category.user_id == user_id, Category.name == category_name).first()
+        if not cat: return False
+        sub_cat = session.query(SubCategory).filter(SubCategory.category_id == cat.id, SubCategory.name == old_name).first()
+        if not sub_cat: return False
+        sub_cat.name = new_name
+        session.commit()
+        return True
+    except Exception:
+        session.rollback()
+        return False
+    finally:
+        session.close()

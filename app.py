@@ -321,7 +321,23 @@ def callback():
                             count = db.mark_item_as_done(user_id, item_ids); reply_text = f"已完成 {count} 個項目"
                         except: reply_text = "格式錯誤"
                     elif t_lower == "help":
-                        reply_text = "指令：\n- 新增、編輯 <ID>、刪除 <ID>、完成 <ID>\n- list [分類]\n- categories (列出主分類)\n- sub_categories [主分類] (列出子分類)"; quick_reply = get_quick_reply(["新增", "list", "categories", "help"])
+                        reply_text = "指令：\n- 新增、編輯 <ID>、刪除 <ID>、完成 <ID>\n- list [分類]\n- categories (列出主分類)\n- sub_categories [主分類] (列出子分類)\n- rename_cat 舊名 -> 新名\n- rename_sub 主分類/舊子名 -> 新子名"; quick_reply = get_quick_reply(["新增", "list", "categories", "help"])
+                    elif t_lower.startswith("rename_cat"):
+                        # 使用正則表達式解析：rename_cat 舊名 -> 新名
+                        match = re.search(r"rename_cat\s+(.+)\s+->\s+(.+)", t, re.IGNORECASE)
+                        if match:
+                            old_n, new_n = match.group(1).strip(), match.group(2).strip()
+                            if db.rename_category(user_id, old_n, new_n): reply_text = f"主分類已更名：{old_n} -> {new_n}"
+                            else: reply_text = f"找不到主分類：{old_n}"
+                        else: reply_text = "格式錯誤。請輸入：rename_cat 舊名 -> 新名"
+                    elif t_lower.startswith("rename_sub"):
+                        # 使用正則表達式解析：rename_sub 主分類/舊子名 -> 新子名
+                        match = re.search(r"rename_sub\s+(.+)/(.+)\s+->\s+(.+)", t, re.IGNORECASE)
+                        if match:
+                            cat_n, old_n, new_n = match.group(1).strip(), match.group(2).strip(), match.group(3).strip()
+                            if db.rename_sub_category(user_id, cat_n, old_n, new_n): reply_text = f"子分類已更名：[{cat_n}] {old_n} -> {new_n}"
+                            else: reply_text = f"找不到該分類或子分類"
+                        else: reply_text = "格式錯誤。請輸入：rename_sub 主分類/舊子名 -> 新子名"
                     elif t_lower in ["categories", "cat"]:
                         cats = db.list_categories(user_id)
                         if cats:
