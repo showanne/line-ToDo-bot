@@ -77,57 +77,53 @@
 
 ---
 
-## 📦 安裝與設定 (Installation & Setup)
+## 📦 安裝與啟動
 
-### 1. 設定環境變數
+1.  **設定環境**：
+    複製 `.env.sample` 並填入 LINE API 金鑰。
 
-複製 `.env.sample` 並更名為 `.env`，填入以下必要資訊：
+    ```env
+    NGROK_AUTHTOKEN="你的 ngrok Authtoken"
+    LINE_CHANNEL_ACCESS_TOKEN="你的 Channel Access Token"
+    LINE_CHANNEL_SECRET="你的 Channel Secret"
+    APP_ENV="development" # production 則會嘗試連接 Postgres
+    DATABASE_URL="postgresql://user:pass@host:port/db" # 若 APP_ENV 為 production 則必填
+    ```
 
-```env
-NGROK_AUTHTOKEN="你的 ngrok Authtoken"
-LINE_CHANNEL_ACCESS_TOKEN="你的 Channel Access Token"
-LINE_CHANNEL_SECRET="你的 Channel Secret"
-APP_ENV="development" # production 則會嘗試連接 Postgres
-DATABASE_URL="postgresql://user:pass@host:port/db" # 若 APP_ENV 為 production 則必填
-```
+2.  **建立虛擬環境**
 
-### 2. 建立虛擬環境
+    ```bash
+    python -m venv venv
+    # Windows
+    venv\Scripts\activate
+    # macOS/Linux
+    source venv/bin/activate
+    ```
 
-```bash
-python -m venv venv
-# Windows
-venv\Scripts\activate
-# macOS/Linux
-source venv/bin/activate
-```
+3.  **安裝依賴**
 
-### 3. 安裝依賴
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-```bash
-pip install -r requirements.txt
-```
+4.  **執行專案**：
 
----
+    ```bash
+    python app.py
+    ```
 
-## 🏃 啟動與執行 (Running the App)
+    程式會自動啟動 `ngrok` 並顯示一個公開 URL（例如 `https://xxxx.ngrok-free.app`）。
 
-1. **啟動伺服器**：
+5.  **設定 Webhook**：
+    前往 [LINE Developers Console](https://developers.line.biz/console/)，將 Webhook URL 設定為：
+    `https://xxxx.ngrok-free.app/callback`
 
-   ```bash
-   python app.py
-   ```
+6.  **設定圖文選單 (選填)**：
+    確保目錄下有 `rich_menu.png` (2500x843)，然後執行：
 
-   程式會自動啟動 `ngrok` 並顯示一個公開 URL（例如 `https://xxxx.ngrok-free.app`）。
-
-2. **設定 Webhook**：
-   前往 [LINE Developers Console](https://developers.line.biz/console/)，將 Webhook URL 設定為：
-   `https://xxxx.ngrok-free.app/callback`
-
-3. **設定圖文選單 (選填)**：
-   確保目錄下有 `rich_menu.png` (2500x843)，然後執行：
-   ```bash
-   python setup_rich_menu.py
-   ```
+    ```bash
+    python setup_rich_menu.py
+    ```
 
 ---
 
