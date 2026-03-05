@@ -321,7 +321,37 @@ def callback():
                             count = db.mark_item_as_done(user_id, item_ids); reply_text = f"已完成 {count} 個項目"
                         except: reply_text = "格式錯誤"
                     elif t_lower == "help":
-                        reply_text = "指令：新增、編輯 <ID>、刪除 <ID>、完成 <ID>、list [分類]"; quick_reply = get_quick_reply(["新增", "list", "help"])
+                        reply_text = "指令：\n- 新增、編輯 <ID>、刪除 <ID>、完成 <ID>\n- list [分類]\n- categories (列出主分類)\n- sub_categories [主分類] (列出子分類)"; quick_reply = get_quick_reply(["新增", "list", "categories", "help"])
+                    elif t_lower in ["categories", "cat"]:
+                        cats = db.list_categories(user_id)
+                        if cats:
+                            reply_text = "您的主分類：\n" + "\n".join([f"- {c}" for c in cats])
+                            quick_reply = get_quick_reply(cats[:13]) # LINE Quick Reply 限制 13 個
+                        else:
+                            reply_text = "目前沒有任何主分類。"
+                    elif t_lower.startswith("sub_categories") or t_lower.startswith("subcat"):
+                        parts = t.split(" ", 1)
+                        cat_filter = parts[1].strip() if len(parts) > 1 else None
+                        results = db.list_sub_categories(user_id, cat_filter)
+                        if results:
+                            # 分組邏輯
+                            grouped = {}
+                            for cat, subcat in results:
+                                if cat not in grouped: grouped[cat] = []
+                                grouped[cat].append(subcat)
+                            
+                            output = []
+                            all_sub_cats = []
+                            for cat, subs in grouped.items():
+                                output.append(f"【{cat}】")
+                                for s in subs:
+                                    output.append(f"  - {s}")
+                                    if s not in all_sub_cats: all_sub_cats.append(s)
+                            
+                            reply_text = "\n".join(output)
+                            quick_reply = get_quick_reply(all_sub_cats[:13])
+                        else:
+                            reply_text = f"找不到 {'['+cat_filter+'] 的' if cat_filter else ''}子分類。"
                     elif t_lower.startswith("list"):
                         offset = 0
                         offset_match = re.search(r'@(\d+)$', t)

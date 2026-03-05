@@ -277,3 +277,24 @@ def list_items(user_id, category_name=None, sub_category_name=None):
         return results
     finally:
         session.close()
+
+def list_categories(user_id):
+    """列出使用者的所有主分類名稱"""
+    session = db_session()
+    try:
+        categories = session.query(Category.name).filter(Category.user_id == user_id).distinct().all()
+        return [c[0] for c in categories]
+    finally:
+        session.close()
+
+def list_sub_categories(user_id, category_name=None):
+    """列出使用者的所有子分類名稱，回傳 (主分類, 子分類) 列表"""
+    session = db_session()
+    try:
+        query = session.query(Category.name, SubCategory.name).join(SubCategory).filter(Category.user_id == user_id)
+        if category_name:
+            query = query.filter(Category.name == category_name)
+        results = query.order_by(Category.name, SubCategory.name).distinct().all()
+        return results
+    finally:
+        session.close()
