@@ -159,6 +159,10 @@ def create_todo_flex_message(items, group_by_sub_category=False, offset=0, base_
                 })
             btn_box["contents"].append({
                 "type": "button", "style": "secondary", "height": "sm",
+                "action": {"type": "message", "label": "編輯", "text": f"編輯 {item_id}"}
+            })
+            btn_box["contents"].append({
+                "type": "button", "style": "secondary", "height": "sm",
                 "action": {"type": "message", "label": "刪除", "text": f"刪除 {item_id}"}
             })
             item_box["contents"].append(btn_box)
@@ -205,6 +209,55 @@ def create_todo_flex_message(items, group_by_sub_category=False, offset=0, base_
     if len(bubbles) == 1:
         return bubbles[0]
     return {"type": "carousel", "contents": bubbles}
+
+def create_category_flex_message(title, grouped_data, is_sub_category=False):
+    """
+    為分類列表生成 Flex Message。
+    grouped_data: { "主分類名稱": ["子分類1", "子分類2"] }
+    """
+    bubbles = []
+    for main_cat, subs in grouped_data.items():
+        contents = []
+        
+        if is_sub_category:
+            # 子分類模式：每一列包含 [查看清單] 與 [更名] 按鈕
+            for sub in subs:
+                contents.append({
+                    "type": "box", "layout": "horizontal", "spacing": "sm", "margin": "sm",
+                    "contents": [
+                        {
+                            "type": "button", "style": "secondary", "height": "sm", "flex": 3,
+                            "action": {"type": "message", "label": sub, "text": f"list {main_cat}/{sub}"}
+                        },
+                        {
+                            "type": "button", "style": "secondary", "height": "sm", "flex": 1, "color": "#aaaaaa",
+                            "action": {"type": "message", "label": "更名", "text": f"rename_sub {main_cat}/{sub} -> "}
+                        }
+                    ]
+                })
+        else:
+            # 主分類模式：提供 [查看摘要] 與 [重新命名] 按鈕
+            contents.append({
+                "type": "button", "style": "primary", "color": "#464a5c", "margin": "md",
+                "action": {"type": "message", "label": "查看摘要", "text": f"list {main_cat}"}
+            })
+            contents.append({
+                "type": "button", "style": "secondary", "height": "sm", "margin": "sm",
+                "action": {"type": "message", "label": "重新命名", "text": f"rename_cat {main_cat} -> "}
+            })
+
+        bubbles.append({
+            "type": "bubble",
+            "header": {
+                "type": "box", "layout": "vertical", "backgroundColor": "#464a5c",
+                "contents": [{"type": "text", "text": main_cat, "weight": "bold", "size": "xl", "color": "#ffffff"}]
+            },
+            "body": {"type": "box", "layout": "vertical", "spacing": "xs", "contents": contents}
+        })
+
+    if not bubbles: return None
+    if len(bubbles) == 1: return bubbles[0]
+    return {"type": "carousel", "contents": bubbles[:10]} # Carousel 限制 10 個 Bubble
 
 # ------------------------
 # 狀態處理
@@ -260,6 +313,26 @@ def handle_stateful_message(user_id, state, text):
             if db.edit_item(user_id, item_id, field, value):
                 db.clear_user_state(user_id)
                 return f"待辦事項 [{item_id}] 已更新。", None
+    
+    elif action == "rename_cat":
+        old_n = state.get("old_name")
+        if db.rename_category(user_id, old_n, t):
+            db.clear_user_state(user_id)
+            return f"主分類已更名：{old_n} -> {t}", None
+        else:
+            db.clear_user_state(user_id)
+            return f"更名失敗，找不到主分類：{old_n}", None
+
+    elif action == "rename_sub":
+        cat_n = state.get("category_name")
+        old_n = state.get("old_name")
+        if db.rename_sub_category(user_id, cat_n, old_n, t):
+            db.clear_user_state(user_id)
+            return f"子分類已更名：[{cat_n}] {old_n} -> {t}", None
+        else:
+            db.clear_user_state(user_id)
+            return f"更名失敗，找不到該分類或子分類", None
+
     return "操作失敗，請重試。", None
 
 @app.get("/health")
@@ -290,11 +363,44 @@ def callback():
                 if current_state:
                     reply_text, quick_reply = handle_stateful_message(user_id, current_state, t)
                 elif "++" in t:
-                    # 快捷多筆邏輯... (省略詳細實作以節省空間，功能已在之前驗證)
-                    reply_text = "多筆新增功能已執行" # 此處應為完整快捷處理
+                    # 多筆快捷新增：主分類 + 子分類 [+ 地點] ++ 事項1, 事項2
+                    try:
+                        main_parts = t.split("++")
+                        left_side = main_parts[0].strip()
+                        right_side = main_parts[1].strip()
+                        
+                        left_parts = [p.strip() for p in left_side.split("+")]
+                        if len(left_parts) < 2: raise ValueError
+                        
+                        category = left_parts[0]
+                        sub_cats = [s.strip() for s in left_parts[1].split(",") if s.strip()]
+                        place = left_parts[2] if len(left_parts) > 2 else None
+                        
+                        titles = [s.strip() for s in right_side.split(",") if s.strip()]
+                        added_count = 0
+                        for title_raw in titles:
+                            tags, clean_title = extract_tags(title_raw)
+                            db.add_item(user_id, category, sub_cats, clean_title, tags=tags, place=place)
+                            added_count += 1
+                        reply_text = f"已批次新增 {added_count} 項至 [{category}]"
+                    except:
+                        reply_text = "多筆新增格式錯誤。範例：工作 + 會議 ++ 事項1, 事項2"
                 elif "+" in t:
-                    # 快捷單筆邏輯...
-                    reply_text = "單筆新增功能已執行"
+                    # 單筆快捷新增：主分類 + 子分類 + 事項 [+ 地點]
+                    try:
+                        parts = [p.strip() for p in t.split("+")]
+                        if len(parts) < 3: raise ValueError
+                        
+                        category = parts[0]
+                        sub_cats = [s.strip() for s in parts[1].split(",") if s.strip()]
+                        title_raw = parts[2]
+                        place = parts[3] if len(parts) > 3 else None
+                        
+                        tags, clean_title = extract_tags(title_raw)
+                        db.add_item(user_id, category, sub_cats, clean_title, tags=tags, place=place)
+                        reply_text = f"已新增：{clean_title} ({category})"
+                    except:
+                        reply_text = "單筆新增格式錯誤。範例：工作 + 會議 + 準備週報"
                 else:
                     t_lower = t.lower()
                     if t_lower == "ping": reply_text = "pong"
@@ -323,26 +429,50 @@ def callback():
                     elif t_lower == "help":
                         reply_text = "指令：\n- 新增、編輯 <ID>、刪除 <ID>、完成 <ID>\n- list [分類]\n- categories (列出主分類)\n- sub_categories [主分類] (列出子分類)\n- rename_cat 舊名 -> 新名\n- rename_sub 主分類/舊子名 -> 新子名"; quick_reply = get_quick_reply(["新增", "list", "categories", "help"])
                     elif t_lower.startswith("rename_cat"):
-                        # 使用正則表達式解析：rename_cat 舊名 -> 新名
-                        match = re.search(r"rename_cat\s+(.+)\s+->\s+(.+)", t, re.IGNORECASE)
-                        if match:
-                            old_n, new_n = match.group(1).strip(), match.group(2).strip()
-                            if db.rename_category(user_id, old_n, new_n): reply_text = f"主分類已更名：{old_n} -> {new_n}"
-                            else: reply_text = f"找不到主分類：{old_n}"
-                        else: reply_text = "格式錯誤。請輸入：rename_cat 舊名 -> 新名"
+                        # 解析：rename_cat 舊名 [-> 新名]
+                        content = t[10:].strip()
+                        if "->" in content:
+                            parts = content.split("->")
+                            old_n = parts[0].strip()
+                            new_n = parts[1].strip()
+                            if old_n and new_n:
+                                if db.rename_category(user_id, old_n, new_n): reply_text = f"主分類已更名：{old_n} -> {new_n}"
+                                else: reply_text = f"找不到主分類：{old_n}"
+                            elif old_n:
+                                db.set_user_state(user_id, {"action": "rename_cat", "old_name": old_n})
+                                reply_text = f"正在更改主分類 [{old_n}]，請輸入新名稱："; quick_reply = get_quick_reply(["取消"])
+                            else: reply_text = "格式錯誤。範例：rename_cat 舊名 -> 新名"
+                        else: reply_text = "格式錯誤。範例：rename_cat 舊名 -> 新名"
+
                     elif t_lower.startswith("rename_sub"):
-                        # 使用正則表達式解析：rename_sub 主分類/舊子名 -> 新子名
-                        match = re.search(r"rename_sub\s+(.+)/(.+)\s+->\s+(.+)", t, re.IGNORECASE)
-                        if match:
-                            cat_n, old_n, new_n = match.group(1).strip(), match.group(2).strip(), match.group(3).strip()
-                            if db.rename_sub_category(user_id, cat_n, old_n, new_n): reply_text = f"子分類已更名：[{cat_n}] {old_n} -> {new_n}"
-                            else: reply_text = f"找不到該分類或子分類"
-                        else: reply_text = "格式錯誤。請輸入：rename_sub 主分類/舊子名 -> 新子名"
+                        # 解析：rename_sub 主分類/舊子名 [-> 新子名]
+                        content = t[10:].strip()
+                        if "->" in content:
+                            parts = content.split("->")
+                            left_side = parts[0].strip()
+                            new_n = parts[1].strip()
+                            
+                            if "/" in left_side:
+                                path_parts = left_side.split("/", 1)
+                                cat_n = path_parts[0].strip()
+                                old_n = path_parts[1].strip()
+                                
+                                if cat_n and old_n and new_n:
+                                    if db.rename_sub_category(user_id, cat_n, old_n, new_n): reply_text = f"子分類已更名：[{cat_n}] {old_n} -> {new_n}"
+                                    else: reply_text = f"找不到該分類或子分類"
+                                elif cat_n and old_n:
+                                    db.set_user_state(user_id, {"action": "rename_sub", "category_name": cat_n, "old_name": old_n})
+                                    reply_text = f"正在更改 [{cat_n}] 的子分類 [{old_n}]，請輸入新名稱："; quick_reply = get_quick_reply(["取消"])
+                                else: reply_text = "格式錯誤。範例：rename_sub 主分類/舊子名 -> 新子名"
+                            else: reply_text = "格式錯誤。請確保包含斜線 / 區隔主子分類。"
+                        else: reply_text = "格式錯誤。範例：rename_sub 主分類/舊子名 -> 新子名"
                     elif t_lower in ["categories", "cat"]:
                         cats = db.list_categories(user_id)
                         if cats:
-                            reply_text = "您的主分類：\n" + "\n".join([f"- {c}" for c in cats])
-                            quick_reply = get_quick_reply(cats[:13]) # LINE Quick Reply 限制 13 個
+                            grouped = {c: [] for c in cats}
+                            flex_contents = create_category_flex_message("主分類列表", grouped, is_sub_category=False)
+                            reply_text = "您的主分類列表"
+                            quick_reply = get_quick_reply(cats[:13])
                         else:
                             reply_text = "目前沒有任何主分類。"
                     elif t_lower.startswith("sub_categories") or t_lower.startswith("subcat"):
@@ -350,21 +480,15 @@ def callback():
                         cat_filter = parts[1].strip() if len(parts) > 1 else None
                         results = db.list_sub_categories(user_id, cat_filter)
                         if results:
-                            # 分組邏輯
                             grouped = {}
+                            all_sub_cats = []
                             for cat, subcat in results:
                                 if cat not in grouped: grouped[cat] = []
                                 grouped[cat].append(subcat)
+                                if subcat not in all_sub_cats: all_sub_cats.append(subcat)
                             
-                            output = []
-                            all_sub_cats = []
-                            for cat, subs in grouped.items():
-                                output.append(f"【{cat}】")
-                                for s in subs:
-                                    output.append(f"  - {s}")
-                                    if s not in all_sub_cats: all_sub_cats.append(s)
-                            
-                            reply_text = "\n".join(output)
+                            flex_contents = create_category_flex_message("子分類列表", grouped, is_sub_category=True)
+                            reply_text = f"{cat_filter or '所有'} 子分類列表"
                             quick_reply = get_quick_reply(all_sub_cats[:13])
                         else:
                             reply_text = f"找不到 {'['+cat_filter+'] 的' if cat_filter else ''}子分類。"
