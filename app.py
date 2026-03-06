@@ -90,7 +90,7 @@ def create_todo_flex_message(items, group_by_sub_category=False, offset=0, base_
     for group_name, group_items in groups.items():
         sorted_items = sorted(group_items, key=lambda x: x[0], reverse=True)
         chunks = [sorted_items[x:x+3] for x in range(0, len(sorted_items), 3)]
-        
+
         if compact:
             bubble_specs.append({
                 "name": group_name,
@@ -111,7 +111,7 @@ def create_todo_flex_message(items, group_by_sub_category=False, offset=0, base_
     total_bubbles = len(bubble_specs)
     has_next = False
     next_offset = offset + 9
-    
+
     if total_bubbles > offset + 10:
         display_specs = bubble_specs[offset:offset+9]
         has_next = True
@@ -122,10 +122,10 @@ def create_todo_flex_message(items, group_by_sub_category=False, offset=0, base_
     for spec in display_specs:
         contents = []
         spec_items = spec["items"]
-        
+
         for idx, item in enumerate(spec_items):
             item_id, title, _, is_done, place, _, _, sub_cats, tags = item
-            
+
             item_box = {
                 "type": "box", "layout": "vertical", "spacing": "sm",
                 "contents": [
@@ -150,41 +150,44 @@ def create_todo_flex_message(items, group_by_sub_category=False, offset=0, base_
             details.append({"type": "text", "text": info, "size": "xxs", "color": "#999999", "wrap": True})
             item_box["contents"].append({"type": "box", "layout": "vertical", "margin": "sm", "contents": details})
 
-            # 操作按鈕
+            # 自定義小型按鈕
             btn_box = {"type": "box", "layout": "horizontal", "margin": "md", "spacing": "sm", "contents": []}
             if not is_done:
                 btn_box["contents"].append({
-                    "type": "button", "style": "primary", "height": "sm", "color": "#00b900",
-                    "action": {"type": "message", "label": "完成", "text": f"完成 {item_id}"}
+                    "type": "box", "layout": "vertical", "backgroundColor": "#8D6E63", "cornerRadius": "sm", "paddingAll": "4px",
+                    "action": {"type": "message", "label": "完成", "text": f"完成 {item_id}"},
+                    "contents": [{"type": "text", "text": "完成", "color": "#ffffff", "size": "xs", "align": "center"}]
                 })
             btn_box["contents"].append({
-                "type": "button", "style": "secondary", "height": "sm",
-                "action": {"type": "message", "label": "編輯", "text": f"編輯 {item_id}"}
+                "type": "box", "layout": "vertical", "backgroundColor": "#BDBDBD", "cornerRadius": "sm", "paddingAll": "4px",
+                "action": {"type": "message", "label": "編輯", "text": f"編輯 {item_id}"},
+                "contents": [{"type": "text", "text": "編輯", "color": "#ffffff", "size": "xs", "align": "center"}]
             })
             btn_box["contents"].append({
-                "type": "button", "style": "secondary", "height": "sm",
-                "action": {"type": "message", "label": "刪除", "text": f"刪除 {item_id}"}
+                "type": "box", "layout": "vertical", "backgroundColor": "#EEEEEE", "cornerRadius": "sm", "paddingAll": "4px",
+                "action": {"type": "message", "label": "刪除", "text": f"刪除 {item_id}"},
+                "contents": [{"type": "text", "text": "刪除", "color": "#616161", "size": "xs", "align": "center"}]
             })
             item_box["contents"].append(btn_box)
-            
+
             contents.append(item_box)
             if idx < len(spec_items) - 1:
-                contents.append({"type": "separator", "margin": "lg"})
+                contents.append({"type": "separator", "margin": "lg", "color": "#F5F5F5"})
 
-        if compact and spec.get("show_more"):
-            # 簡潔模式：導向詳細列表
-            target_cmd = f"list {spec['name']}" if not group_by_sub_category else f"list {parent_category}/{spec['name']}"
-            contents.append({"type": "separator", "margin": "xl"})
-            contents.append({
-                "type": "button", "style": "link", "height": "sm",
-                "action": {"type": "message", "label": f"查看全部 {spec['total_count']} 項", "text": target_cmd}
-            })
-
+            if compact and spec.get("show_more"):
+                # 簡潔模式
+                target_cmd = f"list {spec['name']}" if not group_by_sub_category else f"list {parent_category}/{spec['name']}"
+                contents.append({"type": "separator", "margin": "xl", "color": "#F5F5F5"})
+                contents.append({
+                    "type": "button", "style": "link", "height": "sm", "color": "#8D6E63",
+                    "action": {"type": "message", "label": f"查看全部 ({spec['total_count']})", "text": target_cmd}
+                })
         bubbles.append({
             "type": "bubble",
+            "styles": {"footer": {"backgroundColor": "#1A1A1A"}},
             "header": {
-                "type": "box", "layout": "vertical", "backgroundColor": "#464a5c",
-                "contents": [{"type": "text", "text": spec["name"], "weight": "bold", "size": "xl", "color": "#ffffff"}]
+                "type": "box", "layout": "vertical", "backgroundColor": "#E67E22",
+                "contents": [{"type": "text", "text": spec["name"], "weight": "bold", "size": "xl", "color": "#ffffff", "align": "center"}]
             },
             "body": {"type": "box", "layout": "vertical", "contents": contents}
         })
@@ -194,13 +197,14 @@ def create_todo_flex_message(items, group_by_sub_category=False, offset=0, base_
         next_range = f"{next_offset + 1} ~ {min(next_offset + 9, total_bubbles)}"
         bubbles.append({
             "type": "bubble",
+            "styles": {"body": {"backgroundColor": "#1A1A1A"}},
             "body": {
                 "type": "box", "layout": "vertical", "justifyContent": "center", "spacing": "md", "contents": [
-                    {"type": "text", "text": "還有更多內容", "weight": "bold", "size": "md", "align": "center"},
-                    {"type": "text", "text": f"第 {next_range} 個卡片", "size": "xs", "color": "#aaaaaa", "align": "center"},
+                    {"type": "text", "text": "MORE TASKS", "weight": "bold", "size": "lg", "align": "center", "color": "#E67E22"},
+                    {"type": "text", "text": f"Index: {next_range}", "size": "xs", "color": "#aaaaaa", "align": "center"},
                     {
-                        "type": "button", "style": "primary", "color": "#464a5c", "margin": "xl",
-                        "action": {"type": "message", "label": "下一頁", "text": f"{base_command} @{next_offset}"}
+                        "type": "button", "style": "primary", "color": "#E67E22", "margin": "xl",
+                        "action": {"type": "message", "label": "NEXT PAGE", "text": f"{base_command} @{next_offset}"}
                     }
                 ]
             }
@@ -212,45 +216,50 @@ def create_todo_flex_message(items, group_by_sub_category=False, offset=0, base_
 
 def create_category_flex_message(title, grouped_data, is_sub_category=False):
     """
-    為分類列表生成 Flex Message。
+    為分類列表生成 Flex Message
     grouped_data: { "主分類名稱": ["子分類1", "子分類2"] }
     """
     bubbles = []
     for main_cat, subs in grouped_data.items():
         contents = []
-        
+
         if is_sub_category:
-            # 子分類模式：每一列包含 [查看清單] 與 [更名] 按鈕
+            # 子分類模式
             for sub in subs:
                 contents.append({
                     "type": "box", "layout": "horizontal", "spacing": "sm", "margin": "sm",
                     "contents": [
                         {
-                            "type": "button", "style": "secondary", "height": "sm", "flex": 3,
-                            "action": {"type": "message", "label": sub, "text": f"list {main_cat}/{sub}"}
+                            "type": "box", "layout": "vertical", "backgroundColor": "#F5F5F5", "cornerRadius": "sm", "paddingAll": "4px", "flex": 3,
+                            "action": {"type": "message", "label": sub, "text": f"list {main_cat}/{sub}"},
+                            "contents": [{"type": "text", "text": sub, "color": "#424242", "size": "xs", "align": "center"}]
                         },
                         {
-                            "type": "button", "style": "secondary", "height": "sm", "flex": 1, "color": "#aaaaaa",
-                            "action": {"type": "message", "label": "更名", "text": f"rename_sub {main_cat}/{sub} -> "}
+                            "type": "box", "layout": "vertical", "backgroundColor": "#EEEEEE", "cornerRadius": "sm", "paddingAll": "4px", "flex": 1,
+                            "action": {"type": "message", "label": "改名", "text": f"rename_sub {main_cat}/{sub} -> "},
+                            "contents": [{"type": "text", "text": "改名", "color": "#9E9E9E", "size": "xs", "align": "center"}]
                         }
                     ]
                 })
         else:
-            # 主分類模式：提供 [查看摘要] 與 [重新命名] 按鈕
+            # 主分類模式
             contents.append({
-                "type": "button", "style": "primary", "color": "#464a5c", "margin": "md",
-                "action": {"type": "message", "label": "查看摘要", "text": f"list {main_cat}"}
+                "type": "box", "layout": "vertical", "backgroundColor": "#8D6E63", "cornerRadius": "sm", "paddingAll": "6px", "margin": "md",
+                "action": {"type": "message", "label": "查看摘要", "text": f"list {main_cat}"},
+                "contents": [{"type": "text", "text": "查看摘要", "color": "#ffffff", "size": "sm", "align": "center"}]
             })
             contents.append({
-                "type": "button", "style": "secondary", "height": "sm", "margin": "sm",
-                "action": {"type": "message", "label": "重新命名", "text": f"rename_cat {main_cat} -> "}
+                "type": "box", "layout": "vertical", "backgroundColor": "#BDBDBD", "cornerRadius": "sm", "paddingAll": "6px", "margin": "sm",
+                "action": {"type": "message", "label": "重新命名", "text": f"rename_cat {main_cat} -> "},
+                "contents": [{"type": "text", "text": "重新命名", "color": "#ffffff", "size": "sm", "align": "center"}]
             })
 
         bubbles.append({
             "type": "bubble",
+            "styles": {"body": {"backgroundColor": "#FFFFFF"}},
             "header": {
-                "type": "box", "layout": "vertical", "backgroundColor": "#464a5c",
-                "contents": [{"type": "text", "text": main_cat, "weight": "bold", "size": "xl", "color": "#ffffff"}]
+                "type": "box", "layout": "vertical", "backgroundColor": "#EFEBE9",
+                "contents": [{"type": "text", "text": main_cat, "weight": "bold", "size": "lg", "color": "#424242", "align": "center"}]
             },
             "body": {"type": "box", "layout": "vertical", "spacing": "xs", "contents": contents}
         })
@@ -313,7 +322,7 @@ def handle_stateful_message(user_id, state, text):
             if db.edit_item(user_id, item_id, field, value):
                 db.clear_user_state(user_id)
                 return f"待辦事項 [{item_id}] 已更新。", None
-    
+
     elif action == "rename_cat":
         old_n = state.get("old_name")
         if db.rename_category(user_id, old_n, t):
@@ -368,14 +377,14 @@ def callback():
                         main_parts = t.split("++")
                         left_side = main_parts[0].strip()
                         right_side = main_parts[1].strip()
-                        
+
                         left_parts = [p.strip() for p in left_side.split("+")]
                         if len(left_parts) < 2: raise ValueError
-                        
+
                         category = left_parts[0]
                         sub_cats = [s.strip() for s in left_parts[1].split(",") if s.strip()]
                         place = left_parts[2] if len(left_parts) > 2 else None
-                        
+
                         titles = [s.strip() for s in right_side.split(",") if s.strip()]
                         added_count = 0
                         for title_raw in titles:
@@ -390,12 +399,12 @@ def callback():
                     try:
                         parts = [p.strip() for p in t.split("+")]
                         if len(parts) < 3: raise ValueError
-                        
+
                         category = parts[0]
                         sub_cats = [s.strip() for s in parts[1].split(",") if s.strip()]
                         title_raw = parts[2]
                         place = parts[3] if len(parts) > 3 else None
-                        
+
                         tags, clean_title = extract_tags(title_raw)
                         db.add_item(user_id, category, sub_cats, clean_title, tags=tags, place=place)
                         reply_text = f"已新增：{clean_title} ({category})"
@@ -451,12 +460,12 @@ def callback():
                             parts = content.split("->")
                             left_side = parts[0].strip()
                             new_n = parts[1].strip()
-                            
+
                             if "/" in left_side:
                                 path_parts = left_side.split("/", 1)
                                 cat_n = path_parts[0].strip()
                                 old_n = path_parts[1].strip()
-                                
+
                                 if cat_n and old_n and new_n:
                                     if db.rename_sub_category(user_id, cat_n, old_n, new_n): reply_text = f"子分類已更名：[{cat_n}] {old_n} -> {new_n}"
                                     else: reply_text = f"找不到該分類或子分類"
@@ -486,7 +495,7 @@ def callback():
                                 if cat not in grouped: grouped[cat] = []
                                 grouped[cat].append(subcat)
                                 if subcat not in all_sub_cats: all_sub_cats.append(subcat)
-                            
+
                             flex_contents = create_category_flex_message("子分類列表", grouped, is_sub_category=True)
                             reply_text = f"{cat_filter or '所有'} 子分類列表"
                             quick_reply = get_quick_reply(all_sub_cats[:13])
