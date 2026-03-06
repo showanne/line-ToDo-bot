@@ -316,6 +316,17 @@ def handle_stateful_message(user_id, state, text):
     return "操作失敗，請取消後重試。", None
 
 # ------------------------
+# 健康檢查端點 (Health Check)
+# ------------------------
+
+@app.get("/health")
+def health():
+    """
+    提供給監測工具 (如 UptimeRobot) 的簡單端點，確認服務在線。
+    """
+    return jsonify({"status": "ok", "message": "Service is running"}), 200
+
+# ------------------------
 # LINE Webhook 主要入口
 # ------------------------
 
