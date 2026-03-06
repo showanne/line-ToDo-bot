@@ -6,6 +6,7 @@
     "ngrok",
     "NGROK_AUTHTOKEN",
     "pyngrok",
+    "subcat",
     "venv"
   ]
 }
