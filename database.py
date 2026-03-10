@@ -11,25 +11,25 @@ Base = declarative_base()
 app_env = os.getenv("APP_ENV", "development").lower()
 database_url = os.getenv("DATABASE_URL")
 
-# 依據環境變數 (APP_ENV) 決定資料庫類型
-if app_env == "production" and database_url:
-    # 處理 Render 等平台提供的 postgres:// 格式修正
+# 優先使用 DATABASE_URL (如 Supabase)，否則回退到 SQLite
+if database_url:
+    # 處理 Render 等平台提供的 postgres:// 格式修正 (SQLAlchemy 需使用 postgresql://)
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
 
-    # 確保 Supabase 等平台有 sslmode=require
+    # 確保 Supabase 等平台有 sslmode=require (防止連線遭拒)
     if "sslmode" not in database_url:
         connector = "&" if "?" in database_url else "?"
         database_url += f"{connector}sslmode=require"
 
     engine_url = database_url
-    # 生產環境使用預設連接參數
     connect_args = {}
+    db_type = "PostgreSQL (Supabase/Production)"
 else:
-    # 開發環境 (development) 預設使用 SQLite
+    # 預設開發環境使用 SQLite
     engine_url = "sqlite:///todo.db"
-    # SQLite 特殊設定: 支援多執行緒存取
     connect_args = {"check_same_thread": False}
+    db_type = "Local SQLite"
 
 # 建立引擎 (內建連線池)
 engine = create_engine(engine_url, connect_args=connect_args, pool_pre_ping=True)
@@ -99,7 +99,7 @@ class UserState(Base):
 def init_db():
     """初始化資料表結構"""
     Base.metadata.create_all(bind=engine)
-    print(f"Database initialized ({app_env}): {engine_url.split('@')[-1] if '@' in engine_url else engine_url}")
+    print(f"Database initialized ({app_env}): {db_type}")
 
 def get_or_create(session, model, **kwargs):
     """通用輔助函式: 獲取資料，若不存在則建立"""
