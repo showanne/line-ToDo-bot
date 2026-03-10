@@ -13,10 +13,17 @@ database_url = os.getenv("DATABASE_URL")
 
 # 依據環境變數 (APP_ENV) 決定資料庫類型
 if app_env == "production" and database_url:
-    # 處理 Heroku 等平台提供的 postgres:// 格式修正
+    # 處理 Render 等平台提供的 postgres:// 格式修正
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
+
+    # 確保 Supabase 等平台有 sslmode=require
+    if "sslmode" not in database_url:
+        connector = "&" if "?" in database_url else "?"
+        database_url += f"{connector}sslmode=require"
+
     engine_url = database_url
+    # 生產環境使用預設連接參數
     connect_args = {}
 else:
     # 開發環境 (development) 預設使用 SQLite
