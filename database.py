@@ -1,5 +1,6 @@
 # database.py
 import os
+import re
 from datetime import datetime
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Table, Text, JSON
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker, scoped_session
@@ -9,15 +10,20 @@ Base = declarative_base()
 
 # 取得資料庫配置
 app_env = os.getenv("APP_ENV", "development").lower()
-database_url = os.getenv("DATABASE_URL")
+database_url = os.getenv("DATABASE_URL", "").strip()
 
 # 優先使用 DATABASE_URL (如 Supabase)，否則回退到 SQLite
 if database_url:
-    # 處理 Render 等平台提供的 postgres:// 格式修正 (SQLAlchemy 需使用 postgresql://)
+    # 1. 處理 Render/Supabase 等平台提供的格式修正
+    # SQLAlchemy 必須使用 postgresql://
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
+    
+    # 2. 確保使用 psycopg2 驅動程式
+    if not database_url.startswith("postgresql+psycopg2://") and database_url.startswith("postgresql://"):
+        database_url = database_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
-    # 確保 Supabase 等平台有 sslmode=require (防止連線遭拒)
+    # 3. 確保有 sslmode=require (Supabase 必備，防止連線遭拒)
     if "sslmode" not in database_url:
         connector = "&" if "?" in database_url else "?"
         database_url += f"{connector}sslmode=require"
@@ -25,20 +31,25 @@ if database_url:
     engine_url = database_url
     connect_args = {}
     db_type = "PostgreSQL (Supabase/Production)"
+    
+    # 隱藏密碼後輸出日誌，方便除錯
+    masked_url = re.sub(r':([^/@]+)@', ':****@', engine_url)
+    print(f"Connecting to: {masked_url}")
 else:
     # 預設開發環境使用 SQLite
     engine_url = "sqlite:///todo.db"
     connect_args = {"check_same_thread": False}
     db_type = "Local SQLite"
+    print("Connecting to local SQLite database...")
 
 # 建立引擎 (內建連線池)
+# pool_pre_ping=True 會在每次連線前檢查連線是否可用
 engine = create_engine(engine_url, connect_args=connect_args, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 db_session = scoped_session(SessionLocal)
 
 # --- 定義資料模型 (Models) ---
 
-# 多對多關聯表 (Association Tables)
 item_sub_categories = Table(
     'item_sub_categories', Base.metadata,
     Column('item_id', Integer, ForeignKey('items.id', ondelete='CASCADE'), primary_key=True),
@@ -56,7 +67,6 @@ class Category(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(String, index=True, nullable=False)
     name = Column(String, nullable=False)
-    
     sub_categories = relationship("SubCategory", back_populates="category", cascade="all, delete")
     items = relationship("Item", back_populates="category")
 
@@ -65,7 +75,6 @@ class SubCategory(Base):
     id = Column(Integer, primary_key=True, index=True)
     category_id = Column(Integer, ForeignKey('categories.id', ondelete='CASCADE'), nullable=False)
     name = Column(String, nullable=False)
-    
     category = relationship("Category", back_populates="sub_categories")
 
 class Tag(Base):
@@ -82,9 +91,8 @@ class Item(Base):
     title = Column(String, nullable=False)
     description = Column(Text)
     place = Column(String)
-    done = Column(Integer, default=0) # 修正：改為 Integer 以符合 PostgreSQL 現有結構 (0:未完成, 1:已完成)
+    done = Column(Integer, default=0)
     completed_date = Column(String)
-    
     category = relationship("Category", back_populates="items")
     sub_categories = relationship("SubCategory", secondary=item_sub_categories, backref="items")
     tags = relationship("Tag", secondary=item_tags, backref="items")
@@ -98,22 +106,25 @@ class UserState(Base):
 
 def init_db():
     """初始化資料表結構"""
-    Base.metadata.create_all(bind=engine)
-    print(f"Database initialized ({app_env}): {db_type}")
+    try:
+        Base.metadata.create_all(bind=engine)
+        print(f"Database initialized ({app_env}): {db_type}")
+    except Exception as e:
+        print(f"DATABASE ERROR during init_db: {str(e)}")
+        # 拋出異常讓啟動流程失敗，以便在日誌中看到完整 Traceback
+        raise e
 
 def get_or_create(session, model, **kwargs):
-    """通用輔助函式: 獲取資料，若不存在則建立"""
     instance = session.query(model).filter_by(**kwargs).first()
     if instance:
         return instance
     else:
         instance = model(**kwargs)
         session.add(instance)
-        session.flush() # 確保取得 ID
+        session.flush()
         return instance
 
 def set_user_state(user_id, state_dict):
-    """持久化保存使用者對話狀態"""
     session = db_session()
     try:
         state = session.query(UserState).filter(UserState.user_id == user_id).first()
@@ -129,7 +140,6 @@ def set_user_state(user_id, state_dict):
         session.close()
 
 def get_user_state(user_id):
-    """取得持久化的使用者對話狀態"""
     session = db_session()
     try:
         state = session.query(UserState).filter(UserState.user_id == user_id).first()
@@ -138,7 +148,6 @@ def get_user_state(user_id):
         session.close()
 
 def clear_user_state(user_id):
-    """清空使用者對話狀態"""
     session = db_session()
     try:
         session.query(UserState).filter(UserState.user_id == user_id).delete()
@@ -149,33 +158,24 @@ def clear_user_state(user_id):
         session.close()
 
 def add_item(user_id, category_name, sub_category_names, title, tags=None, place=None):
-    """新增待辦事項"""
     session = db_session()
     try:
-        # 取得或建立主分類
         cat = get_or_create(session, Category, user_id=user_id, name=category_name)
-        
-        # 處理子分類
         if isinstance(sub_category_names, str):
             sub_category_names = [s.strip() for s in sub_category_names.split(",") if s.strip()]
-        
         sub_cats = []
         for sc_name in sub_category_names:
             sub_cats.append(get_or_create(session, SubCategory, category_id=cat.id, name=sc_name))
-            
-        # 處理標籤
         item_tags_list = []
         if tags:
             for t_name in tags:
                 item_tags_list.append(get_or_create(session, Tag, user_id=user_id, name=t_name))
-        
-        # 建立項目
         new_item = Item(
             user_id=user_id,
             category_id=cat.id,
             title=title,
             place=place,
-            done=0, # 確保使用整數
+            done=0,
             sub_categories=sub_cats,
             tags=item_tags_list
         )
@@ -189,7 +189,6 @@ def add_item(user_id, category_name, sub_category_names, title, tags=None, place
         session.close()
 
 def delete_item(user_id, item_ids):
-    """刪除項目"""
     session = db_session()
     try:
         count = session.query(Item).filter(Item.id.in_(item_ids), Item.user_id == user_id).delete(synchronize_session=False)
@@ -202,12 +201,11 @@ def delete_item(user_id, item_ids):
         session.close()
 
 def mark_item_as_done(user_id, item_ids):
-    """標記完成"""
     session = db_session()
     try:
         items = session.query(Item).filter(Item.id.in_(item_ids), Item.user_id == user_id).all()
         for item in items:
-            item.done = 1 # 修正：使用整數 1
+            item.done = 1
             item.completed_date = datetime.now().isoformat()
         session.commit()
         return len(items)
@@ -218,12 +216,10 @@ def mark_item_as_done(user_id, item_ids):
         session.close()
 
 def get_item(user_id, item_id):
-    """獲取單一項目詳細資訊 (轉換為字典相容格式)"""
     session = db_session()
     try:
         item = session.query(Item).filter(Item.id == item_id, Item.user_id == user_id).first()
         if not item: return None
-        
         return {
             "id": item.id,
             "title": item.title,
@@ -236,16 +232,13 @@ def get_item(user_id, item_id):
         session.close()
 
 def edit_item(user_id, item_id, field, value):
-    """編輯項目欄位"""
     session = db_session()
     try:
         item = session.query(Item).filter(Item.id == item_id, Item.user_id == user_id).first()
         if not item: return False
-        
         if field == "title": item.title = value
         elif field == "place": item.place = value
         else: return False
-        
         session.commit()
         return True
     except Exception:
@@ -255,28 +248,18 @@ def edit_item(user_id, item_id, field, value):
         session.close()
 
 def list_items(user_id, category_name=None, sub_category_name=None):
-    """列出清單，回傳相容於原 app.py 的 Tuple 格式"""
     session = db_session()
     try:
-        # 基礎查詢，先 JOIN Category 方便後續過濾與排序
         query = session.query(Item).join(Category).filter(Item.user_id == user_id)
-        
         if category_name:
             query = query.filter(Category.name == category_name)
-            
         if sub_category_name:
-            # 這裡 JOIN SubCategory 沒問題，因為它是不同資料表
             query = query.join(Item.sub_categories).filter(SubCategory.name == sub_category_name)
-            
-        # 排序: 主分類、ID
         items = query.order_by(Category.name, Item.id).all()
-        
-        # 轉換為 Tuple 格式以維持 app.py 的相容性
         results = []
         for i in items:
             sub_cats = ", ".join([sc.name for sc in i.sub_categories])
             tag_str = ", ".join([t.name for t in i.tags])
-            # i.done 現在已經是整數了，直接放入即可
             results.append((
                 i.id, i.title, i.description, i.done, i.place, 
                 i.completed_date, i.category.name, sub_cats, tag_str
@@ -286,7 +269,6 @@ def list_items(user_id, category_name=None, sub_category_name=None):
         session.close()
 
 def list_categories(user_id):
-    """列出使用者的所有主分類名稱"""
     session = db_session()
     try:
         categories = session.query(Category.name).filter(Category.user_id == user_id).distinct().all()
@@ -295,7 +277,6 @@ def list_categories(user_id):
         session.close()
 
 def list_sub_categories(user_id, category_name=None):
-    """列出使用者的所有子分類名稱，回傳 (主分類, 子分類) 列表"""
     session = db_session()
     try:
         query = session.query(Category.name, SubCategory.name).join(SubCategory).filter(Category.user_id == user_id)
@@ -307,7 +288,6 @@ def list_sub_categories(user_id, category_name=None):
         session.close()
 
 def rename_category(user_id, old_name, new_name):
-    """更改主分類名稱"""
     session = db_session()
     try:
         cat = session.query(Category).filter(Category.user_id == user_id, Category.name == old_name).first()
@@ -322,7 +302,6 @@ def rename_category(user_id, old_name, new_name):
         session.close()
 
 def rename_sub_category(user_id, category_name, old_name, new_name):
-    """更改特定主分類下的子分類名稱"""
     session = db_session()
     try:
         cat = session.query(Category).filter(Category.user_id == user_id, Category.name == category_name).first()
