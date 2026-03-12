@@ -247,7 +247,7 @@ def edit_item(user_id, item_id, field, value):
     finally:
         session.close()
 
-def list_items(user_id, category_name=None, sub_category_name=None):
+def list_items(user_id, category_name=None, sub_category_name=None, tag_name=None, place=None):
     session = db_session()
     try:
         query = session.query(Item).join(Category).filter(Item.user_id == user_id)
@@ -255,6 +255,11 @@ def list_items(user_id, category_name=None, sub_category_name=None):
             query = query.filter(Category.name == category_name)
         if sub_category_name:
             query = query.join(Item.sub_categories).filter(SubCategory.name == sub_category_name)
+        if tag_name:
+            query = query.join(Item.tags).filter(Tag.name == tag_name)
+        if place:
+            query = query.filter(Item.place == place)
+            
         items = query.order_by(Category.name, Item.id).all()
         results = []
         for i in items:
@@ -273,6 +278,23 @@ def list_categories(user_id):
     try:
         categories = session.query(Category.name).filter(Category.user_id == user_id).distinct().all()
         return [c[0] for c in categories]
+    finally:
+        session.close()
+
+def list_tags(user_id):
+    session = db_session()
+    try:
+        tags = session.query(Tag.name).filter(Tag.user_id == user_id).distinct().all()
+        return [t[0] for t in tags]
+    finally:
+        session.close()
+
+def list_places(user_id):
+    session = db_session()
+    try:
+        # 地點直接存於 Item 表中
+        places = session.query(Item.place).filter(Item.user_id == user_id, Item.place != None).distinct().all()
+        return [p[0] for p in places if p[0]]
     finally:
         session.close()
 

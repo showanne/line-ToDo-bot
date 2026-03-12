@@ -47,14 +47,20 @@ db.init_db()
 # 輔助函式 (Helper Functions)
 # ------------------------
 
-def extract_tags(text):
+def extract_metadata(text):
     """
-    從訊息字串中提取標籤（例如：#緊急 #生活）
-    返回：標籤列表, 移除標籤後的原始文字
+    從訊息字串中提取標籤（#）與地點（@）
+    返回：標籤列表, 地點, 移除標籤與地點後的原始文字
     """
-    tags = re.findall(r'#([^\s#]+)', text)
-    clean_text = re.sub(r'#[^\s#]+', '', text).strip()
-    return tags, clean_text
+    tags = re.findall(r'#([^\s#@]+)', text)
+    # 提取地點：支援 @地點 語法
+    place_match = re.search(r'@([^\s#@]+)', text)
+    place = place_match.group(1) if place_match else None
+    
+    # 移除標籤與地點資訊，留下乾淨的標題
+    clean_text = re.sub(r'#[^\s#@]+', '', text)
+    clean_text = re.sub(r'@[^\s#@]+', '', clean_text).strip()
+    return tags, place, clean_text
 
 def get_quick_reply(labels):
     """
@@ -264,6 +270,34 @@ def create_category_management_flex(grouped_data, is_sub=False, offset=0, base_c
     
     return {"type": "carousel", "contents": bubbles} if len(bubbles) > 1 else bubbles[0]
 
+def create_simple_list_flex(title, items, prefix="", base_command="list"):
+    """
+    生成簡單的標籤或地點選單。
+    """
+    if not items: return None
+    
+    # 每 10 個一組拆分
+    chunks = [items[x:x+10] for x in range(0, len(items), 10)]
+    bubbles = []
+    
+    for idx, chunk in enumerate(chunks):
+        contents = []
+        for item in chunk:
+            display_text = f"{prefix}{item}"
+            contents.append({
+                "type": "button", "style": "secondary", "height": "sm", "margin": "xs",
+                "action": {"type": "message", "label": display_text, "text": f"{base_command} {display_text}"}
+            })
+        
+        bubbles.append({
+            "type": "bubble",
+            "header": {"type": "box", "layout": "vertical", "backgroundColor": "#E67E22",
+                "contents": [{"type": "text", "text": f"{title} ({idx+1}/{len(chunks)})", "weight": "bold", "size": "lg", "color": "#ffffff", "align": "center"}]},
+            "body": {"type": "box", "layout": "vertical", "spacing": "sm", "contents": contents}
+        })
+        
+    return {"type": "carousel", "contents": bubbles} if len(bubbles) > 1 else bubbles[0]
+
 # ------------------------
 # 多步驟流程處理 (State Handling)
 # ------------------------
@@ -283,14 +317,11 @@ def handle_stateful_message(user_id, state, text):
             return "請輸入子分類（多個請用逗號隔開）：", get_quick_reply(["取消"])
         elif stage == "awaiting_sub_category":
             state["data"]["sub_categories"] = [s.strip() for s in t.split(",") if s.strip()]; state["stage"] = "awaiting_title"; db.set_user_state(user_id, state)
-            return "請輸入待辦事項名稱：", get_quick_reply(["取消"])
+            return "請輸入事項內容 (可包含 #標籤 與 @地點)：", get_quick_reply(["取消"])
         elif stage == "awaiting_title":
-            tags, clean_title = extract_tags(t); state["data"]["title"] = clean_title; state["data"]["tags"] = tags; state["stage"] = "awaiting_place"; db.set_user_state(user_id, state)
-            return "請輸入地點（若無請輸入'無'）：", get_quick_reply(["無", "取消"])
-        elif stage == "awaiting_place":
-            place = t if t.lower() not in ["無", "none", "skip"] else None; data = state["data"]
-            db.add_item(user_id, data["category"], data["sub_categories"], data["title"], tags=data["tags"], place=place)
-            db.clear_user_state(user_id); return f"已新增：{data['title']} ({data['category']})", None
+            tags, place, clean_title = extract_metadata(t); data = state["data"]
+            db.add_item(user_id, data["category"], data["sub_categories"], clean_title, tags=tags, place=place)
+            db.clear_user_state(user_id); return f"已新增：{clean_title} ({data['category']})", None
             
     # 處理「編輯」流程
     elif action == "edit_item":
@@ -352,13 +383,22 @@ def callback():
                         main_p = t.split("++"); left_p = [p.strip() for p in main_p[0].split("+")]
                         cat = left_p[0]; subs = [s.strip() for s in left_p[1].split(",")]; items = [i.strip() for i in main_p[1].split(",")]; added = 0
                         for i_s in items:
-                            if i_s: tags, clean_t = extract_tags(i_s); db.add_item(user_id, cat, subs, clean_t, tags=tags); added += 1
+                            if i_s:
+                                tags, place, clean_t = extract_metadata(i_s)
+                                db.add_item(user_id, cat, subs, clean_t, tags=tags, place=place)
+                                added += 1
                         reply_text = f"已批次新增 {added} 項。"
                     except: reply_text = "格式錯誤。"
                 elif "+" in t and len(t.split("+")) >= 3: # 快捷單筆新增語法
                     try:
-                        parts = [p.strip() for p in t.split("+")]; cat = parts[0]; subs = [s.strip() for s in parts[1].split(",")]; tags, clean_t = extract_tags(parts[2])
-                        db.add_item(user_id, cat, subs, clean_t, tags=tags); reply_text = f"已新增：{clean_t}"
+                        parts = [p.strip() for p in t.split("+")]
+                        cat = parts[0]; subs = [s.strip() for s in parts[1].split(",")]
+                        title_part = parts[2]
+                        # 優先讀取第四個欄位作為地點，若無則從標題提取
+                        tags, place_from_text, clean_t = extract_metadata(title_part)
+                        place = parts[3] if len(parts) > 3 else place_from_text
+                        db.add_item(user_id, cat, subs, clean_t, tags=tags, place=place)
+                        reply_text = f"已新增：{clean_t}"
                     except: reply_text = "格式錯誤。"
                 else:
                     # 一般指令判斷
@@ -416,20 +456,47 @@ def callback():
                                 if db.rename_category(user_id, old_n, new_n): reply_text = f"成功：{old_n} -> {new_n}"
                                 else: reply_text = "失敗。"
                             elif old_n: db.set_user_state(user_id, {"action": "rename_cat", "old_name": old_n}); reply_text = f"請輸入 [{old_n}] 的新名稱："; quick_reply = get_quick_reply(["取消"])
+                    elif t_lower.startswith("#"):
+                        # 快捷標籤搜尋
+                        tag = t[1:].strip(); items = db.list_items(user_id, tag_name=tag)
+                        if items: flex_contents = create_todo_flex_message(items, False, 0, f"list #{tag}", False, f"標籤: #{tag}"); reply_text = f"標籤: #{tag}"
+                        else: reply_text = f"找不到帶有標籤 #{tag} 的事項。"
+                    elif t_lower.startswith("@"):
+                        # 快捷地點搜尋
+                        place = t[1:].strip(); items = db.list_items(user_id, place=place)
+                        if items: flex_contents = create_todo_flex_message(items, False, 0, f"list @{place}", False, f"地點: {place}"); reply_text = f"地點: {place}"
+                        else: reply_text = f"找不到地點為 {place} 的事項。"
+                    elif t_lower == "tags":
+                        # 列出所有標籤
+                        tags = db.list_tags(user_id)
+                        if tags: flex_contents = create_simple_list_flex("標籤清單", tags, prefix="#"); reply_text = "標籤清單"
+                        else: reply_text = "目前沒有標籤。"
+                    elif t_lower == "places":
+                        # 列出所有地點
+                        places = db.list_places(user_id)
+                        if places: flex_contents = create_simple_list_flex("地點清單", places, prefix="@"); reply_text = "地點清單"
+                        else: reply_text = "目前沒有地點資訊。"
                     elif t_lower.startswith("list"):
                         # 處理待辦清單查詢與分頁
                         offset = 0; offset_match = re.search(r'@(\d+)$', t); clean_cmd = t
                         if offset_match: offset = int(offset_match.group(1)); clean_cmd = t[:offset_match.start()].strip()
-                        arg = clean_cmd[4:].strip() if len(clean_cmd) > 4 else None; cat = None; sub = None
+                        arg = clean_cmd[4:].strip() if len(clean_cmd) > 4 else None
+                        cat = None; sub = None; tag = None; place = None; header = None
+                        
                         if arg:
-                            if "/" in arg: p = arg.split("/", 1); cat = p[0].strip(); sub = p[1].strip()
+                            if arg.startswith("#"): tag = arg[1:].strip(); header = f"標籤: #{tag}"
+                            elif arg.startswith("@"): place = arg[1:].strip(); header = f"地點: {place}"
+                            elif "/" in arg: p = arg.split("/", 1); cat = p[0].strip(); sub = p[1].strip()
                             else: cat = arg
-                        items = db.list_items(user_id, cat, sub)
+                        
+                        items = db.list_items(user_id, cat, sub, tag, place)
                         if items:
-                            is_compact = True if not sub else False; flex_contents = create_todo_flex_message(items, bool(cat), offset, clean_cmd, is_compact, cat); reply_text = f"{cat or '您的'} 清單{'摘要' if is_compact else ''}"
+                            is_compact = True if (cat and not sub and not tag and not place) else False
+                            flex_contents = create_todo_flex_message(items, bool(cat), offset, clean_cmd, is_compact, header or cat)
+                            reply_text = f"{header or cat or '您的'} 清單{'摘要' if is_compact else ''}"
                         else: reply_text = "沒有內容。"
                     elif t_lower == "help":
-                        reply_text = "指令：\n- 新增 [分類/子類]\n- categories / sub_categories\n- list [分類/子類]\n- 編輯/刪除/完成 <ID>\n- rename_cat 舊->新\n- rename_sub 主/舊->新"; quick_reply = get_quick_reply(["新增", "categories", "list", "help"])
+                        reply_text = "指令：\n- 新增 [分類/子類]\n- categories / tags / places\n- list [分類] 或 [#標籤] 或 [@地點]\n- 直接輸入 #標籤 或 @地點 快速搜尋\n- 編輯/刪除/完成 <ID>\n- rename_cat 舊->新\n- rename_sub 主/舊->新"; quick_reply = get_quick_reply(["新增", "list", "tags", "places", "help"])
                     else: reply_text = f"收到：{text}"
             
             # 發送回應訊息 (Flex 或純文字)
