@@ -194,10 +194,28 @@ def create_todo_flex_message(items, group_by_sub_category=False, offset=0, base_
     
     return {"type": "carousel", "contents": bubbles} if len(bubbles) > 1 else bubbles[0]
 
+def create_dimension_navigation_footer():
+    """
+    生成統一的維度導覽列。
+    """
+    return {
+        "type": "box", "layout": "vertical", "margin": "md", "contents": [
+            {"type": "separator", "color": "#EEEEEE", "margin": "sm"},
+            {"type": "box", "layout": "horizontal", "spacing": "none", "contents": [
+                {"type": "button", "style": "link", "height": "sm", "flex": 1, "action": {"type": "message", "label": "📁分類", "text": "cat"}},
+                {"type": "button", "style": "link", "height": "sm", "flex": 1, "action": {"type": "message", "label": "🌿子類", "text": "subcat"}},
+                {"type": "button", "style": "link", "height": "sm", "flex": 1, "action": {"type": "message", "label": "🏷️標籤", "text": "tags"}},
+                {"type": "button", "style": "link", "height": "sm", "flex": 1, "action": {"type": "message", "label": "📍地點", "text": "places"}}
+            ]}
+        ]
+    }
+
 def create_category_management_flex(grouped_data, is_sub=False, offset=0, base_command="categories"):
     """
     生成分類管理的 Flex Message (包含摘要、更名、預填新增功能)。
-    同樣遵循 3-9-1 法則以應對大量分類。
+    grouped_data: 
+        if not is_sub: {cat_name: undone_count}
+        if is_sub: {main_cat: [(sub_name, undone_count), ...]}
     """
     bubble_specs = []
     if is_sub:
@@ -208,15 +226,18 @@ def create_category_management_flex(grouped_data, is_sub=False, offset=0, base_c
                 label = f"{main_cat} ({idx+1}/{len(chunks)})" if len(chunks) > 1 else main_cat
                 bubble_specs.append({"type": "sub", "header": label, "main": main_cat, "items": chunk})
     else:
-        # 主分類模式：每張卡片代表 1 個主分類
-        for main_cat in grouped_data.keys():
-            bubble_specs.append({"type": "main", "header": main_cat, "main": main_cat})
+        # 主分類模式：每 4 個主分類一組
+        main_cats = list(grouped_data.items())
+        chunks = [main_cats[x:x+4] for x in range(0, len(main_cats), 4)]
+        for idx, chunk in enumerate(chunks):
+            label = f"主分類管理 ({idx+1}/{len(chunks)})" if len(chunks) > 1 else "主分類管理"
+            bubble_specs.append({"type": "main", "header": label, "items": chunk})
 
-    # 分頁計算
+    # 分頁計算 (每頁最多 10 個 bubble)
     total_bubbles = len(bubble_specs)
     has_next = False
-    next_offset = offset + 9
-    display_specs = bubble_specs[offset:offset+9] if total_bubbles > offset + 10 else bubble_specs[offset:offset+10]
+    next_offset = offset + 10
+    display_specs = bubble_specs[offset:offset+10]
     if total_bubbles > offset + 10: has_next = True
 
     bubbles = []
@@ -224,10 +245,12 @@ def create_category_management_flex(grouped_data, is_sub=False, offset=0, base_c
         contents = []
         if spec["type"] == "sub":
             # 子分類卡片內容 (清單式按鈕)
-            for idx, sub in enumerate(spec["items"]):
+            for idx, item in enumerate(spec["items"]):
+                sub, count = item
                 path = f"{spec['main']}/{sub}"
+                display_name = f"{sub} ({count})" if count > 0 else sub
                 row = {"type": "box", "layout": "horizontal", "spacing": "sm", "alignItems": "center", "contents": [
-                    {"type": "text", "text": sub, "weight": "bold", "size": "sm", "color": "#424242", "flex": 4, 
+                    {"type": "text", "text": display_name, "weight": "bold", "size": "sm", "color": "#424242", "flex": 4, 
                      "action": {"type": "message", "label": sub, "text": f"list {path}"}},
                     {"type": "box", "layout": "vertical", "backgroundColor": "#BDBDBD", "cornerRadius": "sm", "paddingAll": "4px", "flex": 2,
                      "action": {"type": "message", "label": "改名", "text": f"rename_sub {path} -> "},
@@ -239,32 +262,41 @@ def create_category_management_flex(grouped_data, is_sub=False, offset=0, base_c
                 contents.append(row)
                 if idx < len(spec["items"]) - 1: contents.append({"type": "separator", "margin": "sm", "color": "#F5F5F5"})
         else:
-            # 主分類卡片內容 (大型管理按鈕)
-            m = spec["main"]
-            contents = [
-                {"type": "box", "layout": "vertical", "backgroundColor": "#8D6E63", "cornerRadius": "sm", "paddingAll": "8px", "margin": "md",
-                 "action": {"type": "message", "label": "摘要", "text": f"list {m}"},
-                 "contents": [{"type": "text", "text": "查看清單摘要", "color": "#ffffff", "size": "sm", "align": "center"}]},
-                {"type": "box", "layout": "vertical", "backgroundColor": "#BDBDBD", "cornerRadius": "sm", "paddingAll": "8px", "margin": "sm",
-                 "action": {"type": "message", "label": "更名", "text": f"rename_cat {m} -> "},
-                 "contents": [{"type": "text", "text": "重新命名類別", "color": "#ffffff", "size": "sm", "align": "center"}]},
-                {"type": "box", "layout": "vertical", "backgroundColor": "#E67E22", "cornerRadius": "sm", "paddingAll": "8px", "margin": "sm",
-                 "action": {"type": "message", "label": "新增", "text": f"新增 {m}"},
-                 "contents": [{"type": "text", "text": "於此分類新增項目", "color": "#ffffff", "size": "sm", "align": "center"}]}
-            ]
+            # 主分類卡片內容 (多個分類並排)
+            for idx, item in enumerate(spec["items"]):
+                m, count = item
+                display_name = f"{m} ({count})" if count > 0 else m
+                row = {"type": "box", "layout": "vertical", "spacing": "xs", "contents": [
+                    {"type": "box", "layout": "horizontal", "contents": [
+                        {"type": "text", "text": display_name, "weight": "bold", "size": "md", "color": "#5D4037", "flex": 1,
+                         "action": {"type": "message", "label": m, "text": f"list {m}"}},
+                        {"type": "text", "text": "子類 >", "size": "xs", "color": "#E67E22", "align": "end", "gravity": "center",
+                         "action": {"type": "message", "label": "子類", "text": f"subcat {m}"}}
+                    ]},
+                    {"type": "box", "layout": "horizontal", "spacing": "sm", "contents": [
+                        {"type": "box", "layout": "vertical", "backgroundColor": "#EEEEEE", "cornerRadius": "sm", "paddingAll": "4px", "flex": 1,
+                         "action": {"type": "message", "label": "更名", "text": f"rename_cat {m} -> "},
+                         "contents": [{"type": "text", "text": "更名", "color": "#616161", "size": "xxs", "align": "center"}]},
+                        {"type": "box", "layout": "vertical", "backgroundColor": "#E67E22", "cornerRadius": "sm", "paddingAll": "4px", "flex": 1,
+                         "action": {"type": "message", "label": "新增", "text": f"新增 {m}"},
+                         "contents": [{"type": "text", "text": "新增", "color": "#ffffff", "size": "xxs", "align": "center"}]}
+                    ]}
+                ]}
+                contents.append(row)
+                if idx < len(spec["items"]) - 1: contents.append({"type": "separator", "margin": "md", "color": "#EEEEEE"})
 
         bubbles.append({
             "type": "bubble",
-            "header": {"type": "box", "layout": "vertical", "backgroundColor": "#EFEBE9", "contents": [
-                {"type": "text", "text": spec["header"], "weight": "bold", "size": "lg", "color": "#424242", "align": "center"},
-                {"type": "text", "text": "子分類列表" if spec["type"] == "sub" else "主分類管理", "size": "xs", "color": "#9E9E9E", "align": "center", "margin": "xs"}
+            "header": {"type": "box", "layout": "vertical", "backgroundColor": "#F5F5F5", "contents": [
+                {"type": "text", "text": spec["header"], "weight": "bold", "size": "lg", "color": "#424242", "align": "center"}
             ]},
-            "body": {"type": "box", "layout": "vertical", "spacing": "md", "contents": contents}
+            "body": {"type": "box", "layout": "vertical", "spacing": "md", "contents": contents},
+            "footer": create_dimension_navigation_footer()
         })
 
     if has_next:
         bubbles.append({"type": "bubble", "body": {"type": "box", "layout": "vertical", "justifyContent": "center", "spacing": "md", "contents": [
-            {"type": "text", "text": "更多分類", "weight": "bold", "size": "md", "align": "center"},
+            {"type": "text", "text": "還有更多內容", "weight": "bold", "size": "md", "align": "center"},
             {"type": "button", "style": "primary", "color": "#E67E22", "margin": "xl",
                 "action": {"type": "message", "label": "下一頁", "text": f"{base_command} @{next_offset}"}}]}})
     
@@ -273,27 +305,71 @@ def create_category_management_flex(grouped_data, is_sub=False, offset=0, base_c
 def create_simple_list_flex(title, items, prefix="", base_command="list"):
     """
     生成簡單的標籤或地點選單。
+    items: [(name, count), ...]
     """
     if not items: return None
     
-    # 每 10 個一組拆分
-    chunks = [items[x:x+10] for x in range(0, len(items), 10)]
+    # 每 20 個一組拆分 (每 Bubble 10 行，每行 2 個)
+    chunks = [items[x:x+20] for x in range(0, len(items), 20)]
     bubbles = []
     
     for idx, chunk in enumerate(chunks):
-        contents = []
-        for item in chunk:
-            display_text = f"{prefix}{item}"
-            contents.append({
-                "type": "button", "style": "secondary", "height": "sm", "margin": "xs",
-                "action": {"type": "message", "label": display_text, "text": f"{base_command} {display_text}"}
-            })
+        rows = []
+        for i in range(0, len(chunk), 2):
+            pair = chunk[i:i+2]
+            row_contents = []
+            for item, count in pair:
+                display_name = f"{prefix}{item}"
+                if count > 0: display_name += f" ({count})"
+                row_contents.append({
+                    "type": "box", "layout": "vertical", "flex": 1, "margin": "xs",
+                    "backgroundColor": "#F5F5F5", "cornerRadius": "md", "paddingAll": "8px",
+                    "action": {"type": "message", "label": item, "text": f"{base_command} {prefix}{item}"},
+                    "contents": [{"type": "text", "text": display_name, "size": "xs", "align": "center", "color": "#5D4037", "weight": "bold"}]
+                })
+            # 如果單數，補一個透明佔位
+            if len(pair) == 1:
+                row_contents.append({"type": "box", "layout": "vertical", "flex": 1})
+            rows.append({"type": "box", "layout": "horizontal", "spacing": "sm", "margin": "sm", "contents": row_contents})
         
         bubbles.append({
             "type": "bubble",
-            "header": {"type": "box", "layout": "vertical", "backgroundColor": "#E67E22",
-                "contents": [{"type": "text", "text": f"{title} ({idx+1}/{len(chunks)})", "weight": "bold", "size": "lg", "color": "#ffffff", "align": "center"}]},
-            "body": {"type": "box", "layout": "vertical", "spacing": "sm", "contents": contents}
+            "header": {"type": "box", "layout": "vertical", "backgroundColor": "#F5F5F5",
+                "contents": [{"type": "text", "text": f"{title} ({idx+1}/{len(chunks)})", "weight": "bold", "size": "lg", "color": "#424242", "align": "center"}]},
+            "body": {"type": "box", "layout": "vertical", "spacing": "none", "contents": rows},
+            "footer": create_dimension_navigation_footer()
+        })
+        
+    return {"type": "carousel", "contents": bubbles} if len(bubbles) > 1 else bubbles[0]
+
+def create_simple_list_flex(title, data, prefix=""):
+    """
+    生成標籤或地點的簡單列表 Flex Message。
+    data 格式為 [(name, count), ...]
+    """
+    bubbles = []
+    # 按每 10 個一組拆分
+    chunks = [data[i:i+10] for i in range(0, len(data), 10)]
+    
+    for idx, chunk in enumerate(chunks):
+        contents = []
+        for name, count in chunk:
+            contents.append({
+                "type": "box", "layout": "horizontal", "margin": "md",
+                "action": {"type": "message", "label": name, "text": f"list {prefix}{name}"},
+                "contents": [
+                    {"type": "text", "text": f"{prefix}{name}", "flex": 4, "size": "sm", "weight": "bold"},
+                    {"type": "text", "text": f"{count} 項", "flex": 1, "size": "xs", "color": "#999999", "align": "end"}
+                ]
+            })
+            contents.append({"type": "separator", "margin": "md"})
+            
+        bubbles.append({
+            "type": "bubble",
+            "header": {"type": "box", "layout": "vertical", "backgroundColor": "#8D6E63", "contents": [
+                {"type": "text", "text": f"{title} ({idx+1}/{len(chunks)})", "weight": "bold", "color": "#ffffff"}
+            ]},
+            "body": {"type": "box", "layout": "vertical", "contents": contents}
         })
         
     return {"type": "carousel", "contents": bubbles} if len(bubbles) > 1 else bubbles[0]
@@ -428,12 +504,15 @@ def callback():
                         try: ids = [int(i.strip()) for i in t.split(" ", 1)[1].split(",")]
                         except: ids = []; reply_text = "格式錯誤。"
                         if ids: count = db.mark_item_as_done(user_id, ids); reply_text = f"已完成 {count} 項。"
-                    elif t_lower in ["categories", "cat"] or t_lower.startswith("categories @"):
+                    elif t_lower in ["categories", "cat"] or t_lower.startswith("cat @") or t_lower.startswith("categories @"):
                         # 主分類管理與分頁處理
                         offset = 0; offset_match = re.search(r'@(\d+)$', t)
                         if offset_match: offset = int(offset_match.group(1))
                         cats = db.list_categories(user_id)
-                        if cats: flex_contents = create_category_management_flex({c: [] for c in cats}, is_sub=False, offset=offset, base_command="categories"); reply_text = "主分類管理"
+                        if cats:
+                            # 轉換格式為 {name: []} 以相容舊有的 Flex 生成器，或直接傳入
+                            grouped = {c[0]: [] for c in cats}
+                            flex_contents = create_category_management_flex(grouped, is_sub=False, offset=offset, base_command="cat"); reply_text = "主分類管理"
                         else: reply_text = "目前沒有分類。"
                     elif t_lower.startswith("sub_categories") or t_lower.startswith("subcat"):
                         # 子分類管理與分頁處理
@@ -442,9 +521,9 @@ def callback():
                         parts = clean_t.split(" ", 1); cat_f = parts[1].strip() if len(parts) > 1 else None; results = db.list_sub_categories(user_id, cat_f)
                         if results:
                             grouped = {}
-                            for c, s in results:
+                            for c, s, count in results:
                                 if c not in grouped: grouped[c] = []
-                                grouped[c].append(s)
+                                grouped[c].append((s, count))
                             flex_contents = create_category_management_flex(grouped, is_sub=True, offset=offset, base_command=clean_t); reply_text = f"子分類列表"
                         else: reply_text = "找不到子分類。"
                     elif t_lower.startswith("rename_cat "):
