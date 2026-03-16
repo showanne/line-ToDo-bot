@@ -502,6 +502,17 @@ def health():
     """
     return jsonify({"status": "ok", "message": "Service is running"}), 200
 
+@app.get("/api/export")
+def export_sql():
+    """
+    匯出資料庫內容為 SQL 語法。
+    """
+    try:
+        sql_content = db.export_data_as_sql()
+        return sql_content, 200, {'Content-Type': 'text/plain; charset=utf-8'}
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # ------------------------
 # LINE Webhook 主要入口
 # ------------------------

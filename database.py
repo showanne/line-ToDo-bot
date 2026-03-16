@@ -264,3 +264,54 @@ def rename_sub_category(user_id, cat_name, old, new):
     sc = session.query(SubCategory).filter(SubCategory.category_id == cat.id, SubCategory.name == old).first()
     if not sc: return False
     sc.name = new; session.commit(); return True
+
+def export_data_as_sql():
+    """
+    匯出所有資料表內容並轉換為 SQL INSERT 語句。
+    """
+    session = db_session()
+    sql_statements = []
+    
+    # 定義要處理的表與對應的 Model
+    tables = [
+        (Category, "categories"),
+        (SubCategory, "sub_categories"),
+        (Tag, "tags"),
+        (Item, "items")
+    ]
+    
+    try:
+        # 1. 處理主要資料表
+        for model, table_name in tables:
+            rows = session.query(model).all()
+            for row in rows:
+                columns = [c.name for c in model.__table__.columns]
+                values = []
+                for col in columns:
+                    val = getattr(row, col)
+                    if val is None:
+                        values.append("NULL")
+                    elif isinstance(val, (int, float)):
+                        values.append(str(val))
+                    else:
+                        # 處理字串轉義，避免單引號造成語法錯誤
+                        safe_val = str(val).replace("'", "''")
+                        values.append(f"'{safe_val}'")
+                
+                sql = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({', '.join(values)});"
+                sql_statements.append(sql)
+        
+        # 2. 處理關聯表 (Many-to-Many)
+        # item_sub_categories
+        rel_results = session.execute(item_sub_categories.select()).all()
+        for r in rel_results:
+            sql_statements.append(f"INSERT INTO item_sub_categories (item_id, sub_category_id) VALUES ({r[0]}, {r[1]});")
+            
+        # item_tags
+        rel_results = session.execute(item_tags.select()).all()
+        for r in rel_results:
+            sql_statements.append(f"INSERT INTO item_tags (item_id, tag_id) VALUES ({r[0]}, {r[1]});")
+            
+        return "\n".join(sql_statements)
+    finally:
+        session.close()
