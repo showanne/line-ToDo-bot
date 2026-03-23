@@ -315,3 +315,87 @@ def export_data_as_sql():
         return "\n".join(sql_statements)
     finally:
         session.close()
+
+def get_all_data_json():
+    """
+    取得所有資料並轉換為適合 HTML/JSON 使用的結構。
+    """
+    session = db_session()
+    try:
+        categories = session.query(Category).all()
+        sub_categories = session.query(SubCategory).all()
+        tags = session.query(Tag).all()
+        items = session.query(Item).all()
+
+        return {
+            "categories": [{"id": c.id, "user_id": c.user_id, "name": c.name} for c in categories],
+            "sub_categories": [{"id": sc.id, "category_id": sc.category_id, "name": sc.name} for sc in sub_categories],
+            "tags": [{"id": t.id, "user_id": t.user_id, "name": t.name} for t in tags],
+            "items": [
+                {
+                    "id": i.id,
+                    "user_id": i.user_id,
+                    "category_id": i.category_id,
+                    "category_name": i.category.name if i.category else None,
+                    "title": i.title,
+                    "description": i.description,
+                    "place": i.place,
+                    "done": i.done,
+                    "completed_date": i.completed_date,
+                    "sub_categories": [sc.name for sc in i.sub_categories],
+                    "tags": [t.name for t in i.tags]
+                } for i in items
+            ]
+        }
+    finally:
+        session.close()
+
+def get_categories_summary(user_id=None):
+    session = db_session()
+    try:
+        query = session.query(Category.name, func.count(case((Item.done == 0, 1)))) \
+                       .outerjoin(Item, Item.category_id == Category.id)
+        if user_id: query = query.filter(Category.user_id == user_id)
+        results = query.group_by(Category.name).all()
+        return [{"name": r[0], "count": r[1]} for r in results]
+    finally: session.close()
+
+def get_sub_categories_summary(user_id=None, category_name=None):
+    session = db_session()
+    try:
+        query = session.query(Category.name, SubCategory.name, func.count(case((Item.done == 0, 1)))) \
+                       .join(SubCategory, Category.id == SubCategory.category_id) \
+                       .outerjoin(item_sub_categories, SubCategory.id == item_sub_categories.c.sub_category_id) \
+                       .outerjoin(Item, Item.id == item_sub_categories.c.item_id)
+        if user_id: query = query.filter(Category.user_id == user_id)
+        if category_name: query = query.filter(Category.name == category_name)
+        results = query.group_by(Category.name, SubCategory.name).all()
+        
+        # 結構化為 { "主分類": [{"name": "子類", "count": 1}, ...] }
+        summary = {}
+        for cat, sub, count in results:
+            if cat not in summary: summary[cat] = []
+            summary[cat].append({"name": sub, "count": count})
+        return summary
+    finally: session.close()
+
+def get_tags_summary(user_id=None):
+    session = db_session()
+    try:
+        query = session.query(Tag.name, func.count(case((Item.done == 0, 1)))) \
+                       .outerjoin(item_tags, Tag.id == item_tags.c.tag_id) \
+                       .outerjoin(Item, Item.id == item_tags.c.item_id)
+        if user_id: query = query.filter(Tag.user_id == user_id)
+        results = query.group_by(Tag.name).all()
+        return [{"name": r[0], "count": r[1]} for r in results]
+    finally: session.close()
+
+def get_places_summary(user_id=None):
+    session = db_session()
+    try:
+        query = session.query(Item.place, func.count(case((Item.done == 0, 1)))) \
+                       .filter(Item.place != None)
+        if user_id: query = query.filter(Item.user_id == user_id)
+        results = query.group_by(Item.place).all()
+        return [{"name": r[0], "count": r[1]} for r in results]
+    finally: session.close()

@@ -2,7 +2,7 @@
 import os
 import re
 from datetime import datetime
-from flask import Flask, request, abort, jsonify
+from flask import Flask, request, abort, jsonify, send_file
 from dotenv import load_dotenv
 
 # 引入 LINE Messaging API 相關模型與元件
@@ -512,6 +512,45 @@ def export_sql():
         return sql_content, 200, {'Content-Type': 'text/plain; charset=utf-8'}
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.get("/api/data")
+def get_data():
+    """
+    匯出所有資料為 JSON 格式，供 HTML 網頁使用。
+    """
+    try:
+        data = db.get_all_data_json()
+        return jsonify(data), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.get("/api/categories")
+def get_categories_api():
+    uid = request.args.get("user_id")
+    return jsonify(db.get_categories_summary(uid))
+
+@app.get("/api/sub-categories")
+def get_sub_categories_api():
+    uid = request.args.get("user_id")
+    cat = request.args.get("category")
+    return jsonify(db.get_sub_categories_summary(uid, cat))
+
+@app.get("/api/tags")
+def get_tags_api():
+    uid = request.args.get("user_id")
+    return jsonify(db.get_tags_summary(uid))
+
+@app.get("/api/places")
+def get_places_api():
+    uid = request.args.get("user_id")
+    return jsonify(db.get_places_summary(uid))
+
+@app.get("/dashboard")
+def dashboard():
+    """
+    提供視覺化看板網頁。
+    """
+    return send_file("dashboard.html")
 
 # ------------------------
 # LINE Webhook 主要入口
