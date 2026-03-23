@@ -75,6 +75,7 @@ class Item(Base):
     description = Column(Text)
     place = Column(String)
     done = Column(Integer, default=0)
+    is_deleted = Column(Integer, default=0) # 0: 正常, 1: 已刪除
     completed_date = Column(String)
     category = relationship("Category", back_populates="items")
     sub_categories = relationship("SubCategory", secondary=item_sub_categories, backref="items")
@@ -89,6 +90,20 @@ class UserState(Base):
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    
+    # 針對 SQLite 自動補齊 is_deleted 欄位 (防止舊資料庫報錯)
+    if db_type == "Local SQLite":
+        import sqlite3
+        conn = sqlite3.connect("todo.db")
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT is_deleted FROM items LIMIT 1")
+        except sqlite3.OperationalError:
+            print("Detected missing 'is_deleted' column. Adding it now...")
+            cursor.execute("ALTER TABLE items ADD COLUMN is_deleted INTEGER DEFAULT 0")
+            conn.commit()
+        conn.close()
+    
     print(f"Database initialized ({app_env}): {db_type}")
 
 def get_or_create(session, model, **kwargs):
@@ -141,15 +156,25 @@ def add_item(user_id, category_name, sub_category_names, title, tags=None, place
 def delete_item(user_id, item_ids):
     session = db_session()
     try:
-        count = session.query(Item).filter(Item.id.in_(item_ids), Item.user_id == user_id).delete(synchronize_session=False)
-        session.commit(); return count
+        items = session.query(Item).filter(Item.id.in_(item_ids), Item.user_id == user_id).all()
+        for i in items: i.is_deleted = 1
+        session.commit(); return len(items)
+    except: session.rollback(); return 0
+    finally: session.close()
+
+def restore_item(user_id, item_ids):
+    session = db_session()
+    try:
+        items = session.query(Item).filter(Item.id.in_(item_ids), Item.user_id == user_id).all()
+        for i in items: i.is_deleted = 0
+        session.commit(); return len(items)
     except: session.rollback(); return 0
     finally: session.close()
 
 def mark_item_as_done(user_id, item_ids):
     session = db_session()
     try:
-        items = session.query(Item).filter(Item.id.in_(item_ids), Item.user_id == user_id).all()
+        items = session.query(Item).filter(Item.id.in_(item_ids), Item.user_id == user_id, Item.is_deleted == 0).all()
         for i in items: i.done = 1; i.completed_date = datetime.now().isoformat()
         session.commit(); return len(items)
     except: session.rollback(); return 0
@@ -158,7 +183,7 @@ def mark_item_as_done(user_id, item_ids):
 def get_item(user_id, item_id):
     session = db_session()
     try:
-        i = session.query(Item).filter(Item.id == item_id, Item.user_id == user_id).first()
+        i = session.query(Item).filter(Item.id == item_id, Item.user_id == user_id, Item.is_deleted == 0).first()
         if not i: return None
         return {"id": i.id, "title": i.title, "place": i.place, "category_name": i.category.name,
                 "sub_category_names": ", ".join([sc.name for sc in i.sub_categories]),
@@ -168,7 +193,7 @@ def get_item(user_id, item_id):
 def edit_item(user_id, item_id, field, value):
     session = db_session()
     try:
-        i = session.query(Item).filter(Item.id == item_id, Item.user_id == user_id).first()
+        i = session.query(Item).filter(Item.id == item_id, Item.user_id == user_id, Item.is_deleted == 0).first()
         if not i: return False
         if field == "title": i.title = value
         elif field == "place": i.place = value
@@ -176,14 +201,16 @@ def edit_item(user_id, item_id, field, value):
     except: session.rollback(); return False
     finally: session.close()
 
-def list_items(user_id, category_name=None, sub_category_name=None, tag_name=None, place=None):
+def list_items(user_id, category_name=None, sub_category_name=None, tag_name=None, place=None, item_ids=None, include_deleted=False):
     session = db_session()
     try:
         query = session.query(Item).join(Category).filter(Item.user_id == user_id)
+        if not include_deleted: query = query.filter(Item.is_deleted == 0)
         if category_name: query = query.filter(Category.name == category_name)
         if sub_category_name: query = query.join(Item.sub_categories).filter(SubCategory.name == sub_category_name)
         if tag_name: query = query.join(Item.tags).filter(Tag.name == tag_name)
         if place: query = query.filter(Item.place == place)
+        if item_ids: query = query.filter(Item.id.in_(item_ids))
         items = query.order_by(Category.name, Item.id).all()
         return [(i.id, i.title, i.description, i.done, i.place, i.completed_date, i.category.name,
                  ", ".join([sc.name for sc in i.sub_categories]), ", ".join([t.name for t in i.tags])) for i in items]
@@ -192,11 +219,10 @@ def list_items(user_id, category_name=None, sub_category_name=None, tag_name=Non
 def list_categories(user_id):
     session = db_session()
     try:
-        # 統計各主分類下未完成 (done=0) 的事項數
-        # 使用 outerjoin 確保沒有事項的分類也會顯示 (數量為 0)
+        # 統計各主分類下未完成 (done=0) 的事項數 (排除已刪除)
         results = session.query(
             Category.name,
-            func.count(case((Item.done == 0, 1)))
+            func.count(case(((Item.done == 0) & (Item.is_deleted == 0), 1)))
         ).outerjoin(Item, (Item.category_id == Category.id) & (Item.user_id == user_id)) \
          .filter(Category.user_id == user_id) \
          .group_by(Category.name).all()
@@ -207,11 +233,11 @@ def list_categories(user_id):
 def list_sub_categories(user_id, category_name=None):
     session = db_session()
     try:
-        # 統計各子分類下未完成的事項數
+        # 統計各子分類下未完成的事項數 (排除已刪除)
         query = session.query(
             Category.name,
             SubCategory.name,
-            func.count(case((Item.done == 0, 1)))
+            func.count(case(((Item.done == 0) & (Item.is_deleted == 0), 1)))
         ).join(SubCategory, Category.id == SubCategory.category_id) \
          .outerjoin(item_sub_categories, SubCategory.id == item_sub_categories.c.sub_category_id) \
          .outerjoin(Item, (Item.id == item_sub_categories.c.item_id) & (Item.user_id == user_id)) \
@@ -228,10 +254,10 @@ def list_sub_categories(user_id, category_name=None):
 def list_tags(user_id):
     session = db_session()
     try:
-        # 統計各標籤下未完成的事項數
+        # 統計各標籤下未完成的事項數 (排除已刪除)
         results = session.query(
             Tag.name,
-            func.count(case((Item.done == 0, 1)))
+            func.count(case(((Item.done == 0) & (Item.is_deleted == 0), 1)))
         ).outerjoin(item_tags, Tag.id == item_tags.c.tag_id) \
          .outerjoin(Item, (Item.id == item_tags.c.item_id) & (Item.user_id == user_id)) \
          .filter(Tag.user_id == user_id) \
@@ -243,10 +269,10 @@ def list_tags(user_id):
 def list_places(user_id):
     session = db_session()
     try:
-        # 統計各個地點下未完成的事項數
+        # 統計各個地點下未完成的事項數 (排除已刪除)
         results = session.query(
             Item.place,
-            func.count(case((Item.done == 0, 1)))
+            func.count(case(((Item.done == 0) & (Item.is_deleted == 0), 1)))
         ).filter(Item.user_id == user_id, Item.place != None) \
          .group_by(Item.place).all()
         return [r for r in results if r[0]] # [(name, count), ...]

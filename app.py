@@ -245,48 +245,86 @@ def create_todo_flex_message(items, group_by_sub_category=False, offset=0, base_
 
     return {"type": "carousel", "contents": bubbles} if len(bubbles) > 1 else bubbles[0]
 
-def create_context_navigation_footer(context_type, target_val=None):
+def create_item_detail_carousel(items, context_info=None, is_new=False, is_fail=False, is_deleted=False):
     """
-    生成情境式智慧導覽列。
+    生成單一事項詳情 Carousel。
+    顏色規範：綠色(新增成功)、紅色(失敗/已刪除)、橘色(未完成)、藍色(已完成)
     """
-    buttons = []
-    if context_type == "main":
-        buttons = [
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": "🏷️標籤", "text": "tags"}},
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": "📍地點", "text": "places"}},
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": "➕新增", "text": "新增"}}
-        ]
-    elif context_type == "category":
-        buttons = [
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": "📁分類", "text": "cat"}},
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": f"➕新增至 {target_val}", "text": f"新增 {target_val}"}}
-        ]
-    elif context_type == "subcategory":
-        buttons = [
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": f"⬅️回 {target_val}", "text": f"list {target_val}"}},
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": "🏷️標籤", "text": "tags"}}
-        ]
-    elif context_type == "tag" or context_type == "place":
-        label = "🏷️標籤" if context_type == "tag" else "📍地點"
-        cmd = "tags" if context_type == "tag" else "places"
-        buttons = [
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": label, "text": cmd}},
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": "📁分類", "text": "cat"}},
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": "➕新增", "text": "新增"}}
-        ]
-    else:
-        buttons = [
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": "📁分類", "text": "cat"}},
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": "🏷️標籤", "text": "tags"}},
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": "📍地點", "text": "places"}}
-        ]
+    if not items and not is_fail: return None
+    bubbles = []
+    
+    # 決定導覽列
+    nav_footer = create_context_navigation_footer(context_info.get("type") if context_info else "main")
 
-    return {
-        "type": "box", "layout": "vertical", "margin": "md", "contents": [
-            {"type": "separator", "color": "#EEEEEE", "margin": "sm"},
-            {"type": "box", "layout": "horizontal", "spacing": "none", "contents": buttons}
-        ]
-    }
+    # 如果是失敗狀態 (通常 items 為空)
+    if is_fail:
+        bubbles.append({
+            "type": "bubble",
+            "header": {"type": "box", "layout": "vertical", "backgroundColor": "#E74C3C", "paddingAll": "12px",
+                       "contents": [{"type": "text", "text": "操作失敗", "weight": "bold", "size": "lg", "color": "#ffffff", "align": "center"}]},
+            "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": "請檢查輸入格式或重試。", "align": "center", "size": "sm"}]},
+            "footer": nav_footer
+        })
+    else:
+        for item in items:
+            # item: (id, title, desc, done, place, completed_date, category_name, sub_cats, tags)
+            item_id, title, _, is_done, place, _, cat_name, sub_cats, tags = item
+            
+            # 決定背景色
+            if is_deleted:
+                bg_color = "#E74C3C" # 紅色：已刪除
+                status_label = "🗑️ 事項已刪除"
+            elif is_new:
+                bg_color = "#27AE60" # 綠色：新增成功
+                status_label = f"{cat_name} / {sub_cats}" if sub_cats else cat_name
+            elif is_done:
+                bg_color = "#3498DB" # 藍色：已完成
+                status_label = f"{cat_name} / {sub_cats}" if sub_cats else cat_name
+            else:
+                bg_color = "#E67E22" # 橘色：尚未完成
+                status_label = f"{cat_name} / {sub_cats}" if sub_cats else cat_name
+            
+            header = {
+                "type": "box", "layout": "vertical", "backgroundColor": bg_color, "paddingAll": "12px",
+                "contents": [{"type": "text", "text": status_label, "weight": "bold", "size": "lg", "color": "#ffffff", "align": "center"}]
+            }
+            
+            body_contents = [
+                {"type": "box", "layout": "horizontal", "contents": [
+                    {"type": "text", "text": f"#{item_id}", "size": "xs", "color": "#aaaaaa", "flex": 0},
+                    {"type": "text", "text": title, "weight": "bold", "size": "lg", "flex": 1, "margin": "md", "wrap": True}
+                ]}
+            ]
+            
+            if tags:
+                body_contents.append({"type": "text", "text": "#" + str(tags).replace(", ", " #"), "size": "sm", "color": "#1db446", "wrap": True, "margin": "md"})
+            if place:
+                body_contents.append({"type": "box", "layout": "horizontal", "margin": "md", "contents": [
+                    {"type": "text", "text": "📍", "size": "sm", "flex": 0},
+                    {"type": "text", "text": f"地點: {place}", "size": "sm", "color": "#666666", "flex": 1, "margin": "sm", "wrap": True}
+                ]})
+
+            # 只有在非刪除狀態下才顯示操作按鈕
+            if not is_deleted:
+                buttons = []
+                if not is_done:
+                    buttons.append({"type": "button", "style": "primary", "color": "#E67E22", "height": "sm", "action": {"type": "message", "label": "標記完成", "text": f"完成 {item_id}"}})
+                buttons.append({"type": "button", "style": "secondary", "height": "sm", "action": {"type": "message", "label": "刪除事項", "text": f"刪除 {item_id}"}})
+                body_contents.append({"type": "box", "layout": "vertical", "margin": "xl", "spacing": "sm", "contents": buttons})
+            else:
+                # 刪除狀態下提供復原按鈕
+                body_contents.append({"type": "box", "layout": "vertical", "margin": "xl", "contents": [
+                    {"type": "button", "style": "primary", "color": "#27AE60", "height": "sm", "action": {"type": "message", "label": "復原事項", "text": f"復原 {item_id}"}}
+                ]})
+
+            bubbles.append({
+                "type": "bubble",
+                "header": header,
+                "body": {"type": "box", "layout": "vertical", "contents": body_contents},
+                "footer": nav_footer
+            })
+        
+    return {"type": "carousel", "contents": bubbles} if len(bubbles) > 1 else bubbles[0]
 
 def create_category_management_flex(grouped_data, is_sub=False, offset=0, base_command="categories"):
     """
@@ -423,6 +461,7 @@ def create_help_flex_message():
             ("➕", "新增", "逐步引導新增待辦事項", "新增 "),
             ("✅", "完成 <ID>", "標記事項為已完成 (多筆用逗號)", "完成 "),
             ("🗑️", "刪除 <ID>", "移除待辦事項 (多筆用逗號)", "刪除 "),
+            ("♻️", "復原 <ID>", "恢復已刪除的待辦事項", "復原 "),
             ("✏️", "編輯 <ID>", "修改事項名稱或地點", "編輯 ")
         ]),
         make_bubble("🔍 查詢與管理", "#8D6E63", [
@@ -452,21 +491,24 @@ def handle_stateful_message(user_id, state, text):
     處理使用者正處於「新增中」或「編輯中」的對話狀態。
     """
     action = state.get("action"); t = text.strip()
-    if t.lower() == "取消": db.clear_user_state(user_id); return "操作已取消。", None
+    if t.lower() == "取消": db.clear_user_state(user_id); return "操作已取消。", None, None
 
     # 處理「逐步新增」流程
     if action == "add_item":
         stage = state.get("stage")
         if stage == "awaiting_category":
             state["data"] = {"category": t}; state["stage"] = "awaiting_sub_category"; db.set_user_state(user_id, state)
-            return "請輸入子分類（多個請用逗號隔開）：", get_quick_reply(["取消"])
+            return "請輸入子分類（多個請用逗號隔開）：", get_quick_reply(["取消"]), None
         elif stage == "awaiting_sub_category":
             state["data"]["sub_categories"] = [s.strip() for s in t.split(",") if s.strip()]; state["stage"] = "awaiting_title"; db.set_user_state(user_id, state)
-            return "請輸入事項內容 (可包含 #標籤 與 @地點)：", get_quick_reply(["取消"])
+            return "請輸入事項內容 (可包含 #標籤 與 @地點)：", get_quick_reply(["取消"]), None
         elif stage == "awaiting_title":
             tags, place, clean_title = extract_metadata(t); data = state["data"]
-            db.add_item(user_id, data["category"], data["sub_categories"], clean_title, tags=tags, place=place)
-            db.clear_user_state(user_id); return f"已新增：{clean_title} ({data['category']})", None
+            new_id = db.add_item(user_id, data["category"], data["sub_categories"], clean_title, tags=tags, place=place)
+            db.clear_user_state(user_id)
+            items = db.list_items(user_id, item_ids=[new_id])
+            flex = create_item_detail_carousel(items, is_new=True)
+            return f"已新增：{clean_title}", None, flex
 
     # 處理「編輯」流程
     elif action == "edit_item":
@@ -474,22 +516,25 @@ def handle_stateful_message(user_id, state, text):
         if stage == "awaiting_field_choice":
             if t in ["1", "名稱"]:
                 state["stage"] = "awaiting_new_value"; state["field"] = "title"; db.set_user_state(user_id, state)
-                return "請輸入新的「名稱」：", get_quick_reply(["取消"])
+                return "請輸入新的「名稱」：", get_quick_reply(["取消"]), None
             elif t in ["2", "地點"]:
                 state["stage"] = "awaiting_new_value"; state["field"] = "place"; db.set_user_state(user_id, state)
-                return "請輸入新的「地點」（若要清空請輸入'無'）：", get_quick_reply(["無", "取消"])
+                return "請輸入新的「地點」（若要清空請輸入'無'）：", get_quick_reply(["無", "取消"]), None
         elif stage == "awaiting_new_value":
             field = state.get("field"); value = t if not (field == 'place' and t.lower() in ['無', 'none']) else None
             if db.edit_item(user_id, item_id, field, value):
-                db.clear_user_state(user_id); return f"待辦事項 [{item_id}] 已更新。", None
+                db.clear_user_state(user_id)
+                items = db.list_items(user_id, item_ids=[item_id])
+                flex = create_item_detail_carousel(items, is_new=True)
+                return f"待辦事項 [{item_id}] 已更新。", None, flex
 
     # 處理「更名」流程
     elif action == "rename_cat":
-        if db.rename_category(user_id, state.get("old_name"), t): db.clear_user_state(user_id); return f"更名成功：{t}", None
+        if db.rename_category(user_id, state.get("old_name"), t): db.clear_user_state(user_id); return f"更名成功：{t}", None, None
     elif action == "rename_sub":
-        if db.rename_sub_category(user_id, state.get("category_name"), state.get("old_name"), t): db.clear_user_state(user_id); return f"更名成功：{t}", None
+        if db.rename_sub_category(user_id, state.get("category_name"), state.get("old_name"), t): db.clear_user_state(user_id); return f"更名成功：{t}", None, None
 
-    return "操作失敗，請取消後重試。", None
+    return "操作失敗，請取消後重試。", None, None
 
 # ------------------------
 # 健康檢查端點 (Health Check)
@@ -572,17 +617,22 @@ def callback():
                 t = text.strip(); current_state = db.get_user_state(user_id)
                 # 優先檢查是否處於流程狀態
                 if current_state:
-                    reply_text, quick_reply = handle_stateful_message(user_id, current_state, t)
+                    reply_text, quick_reply, flex_contents = handle_stateful_message(user_id, current_state, t)
                 elif "++" in t: # 快捷多筆新增語法
                     try:
                         main_p = t.split("++"); left_p = [p.strip() for p in main_p[0].split("+")]
                         cat = left_p[0]; subs = [s.strip() for s in left_p[1].split(",")]; items = [i.strip() for i in main_p[1].split(",")]; added = 0
+                        added_ids = []
                         for i_s in items:
                             if i_s:
                                 tags, place, clean_t = extract_metadata(i_s)
-                                db.add_item(user_id, cat, subs, clean_t, tags=tags, place=place)
+                                new_id = db.add_item(user_id, cat, subs, clean_t, tags=tags, place=place)
+                                added_ids.append(new_id)
                                 added += 1
                         reply_text = f"已批次新增 {added} 項。"
+                        if added_ids:
+                            items_data = db.list_items(user_id, item_ids=added_ids)
+                            flex_contents = create_item_detail_carousel(items_data, is_new=True)
                     except: reply_text = "格式錯誤。"
                 elif "+" in t and len(t.split("+")) >= 3: # 快捷單筆新增語法
                     try:
@@ -592,8 +642,10 @@ def callback():
                         # 優先讀取第四個欄位作為地點，若無則從標題提取
                         tags, place_from_text, clean_t = extract_metadata(title_part)
                         place = parts[3] if len(parts) > 3 else place_from_text
-                        db.add_item(user_id, cat, subs, clean_t, tags=tags, place=place)
+                        new_id = db.add_item(user_id, cat, subs, clean_t, tags=tags, place=place)
                         reply_text = f"已新增：{clean_t}"
+                        items_data = db.list_items(user_id, item_ids=[new_id])
+                        flex_contents = create_item_detail_carousel(items_data, is_new=True)
                     except: reply_text = "格式錯誤。"
                 else:
                     # 一般指令判斷
@@ -616,13 +668,53 @@ def callback():
                             else: reply_text = "找不到項目。"
                         except: reply_text = "格式錯誤。"
                     elif t_lower.startswith("刪除 "):
-                        try: ids = [int(i.strip()) for i in t.split(" ", 1)[1].split(",")]
-                        except: ids = []; reply_text = "格式錯誤。"
-                        if ids: count = db.delete_item(user_id, ids); reply_text = f"已刪除 {count} 項。"
+                        try:
+                            parts = t.split(" ", 1)
+                            if len(parts) < 2:
+                                reply_text = "請輸入要刪除的 ID，例如：刪除 1 或 刪除 1,2"
+                            else:
+                                ids = [int(i.strip()) for i in parts[1].split(",") if i.strip()]
+                                if ids:
+                                    # 刪除前先備份資料以供顯示
+                                    items_to_show = db.list_items(user_id, item_ids=ids)
+                                    count = db.delete_item(user_id, ids)
+                                    if count > 0:
+                                        reply_text = f"已刪除 {count} 項。"
+                                        flex_contents = create_item_detail_carousel(items_to_show, is_deleted=True)
+                                    else:
+                                        reply_text = "找不到可刪除的項目。"
+                                else:
+                                    reply_text = "請提供有效的 ID。"
+                        except ValueError:
+                            reply_text = "格式錯誤，ID 必須是數字。"
+                        except Exception as e:
+                            app.logger.error(f"Delete error: {e}")
+                            reply_text = f"執行刪除時發生錯誤：{str(e)}"
+                    elif t_lower.startswith("標記完成 "): # 修正：確保支援原有的長指令
+                        pass 
                     elif t_lower.startswith("完成 "):
-                        try: ids = [int(i.strip()) for i in t.split(" ", 1)[1].split(",")]
-                        except: ids = []; reply_text = "格式錯誤。"
-                        if ids: count = db.mark_item_as_done(user_id, ids); reply_text = f"已完成 {count} 項。"
+                        try:
+                            ids = [int(i.strip()) for i in t.split(" ", 1)[1].split(",")]
+                            if ids:
+                                count = db.mark_item_as_done(user_id, ids)
+                                if count > 0:
+                                    reply_text = f"已完成 {count} 項。"
+                                    items_to_show = db.list_items(user_id, item_ids=ids)
+                                    flex_contents = create_item_detail_carousel(items_to_show)
+                                else: reply_text = "找不到可標記完成的項目。"
+                        except: reply_text = "格式錯誤。"
+                    elif t_lower.startswith("復原 "):
+                        try:
+                            ids = [int(i.strip()) for i in t.split(" ", 1)[1].split(",")]
+                            if ids:
+                                count = db.restore_item(user_id, ids)
+                                if count > 0:
+                                    reply_text = f"已復原 {count} 項。"
+                                    # 讀取已復原的事項並顯示為橘色（未完成）
+                                    items_to_show = db.list_items(user_id, item_ids=ids)
+                                    flex_contents = create_item_detail_carousel(items_to_show)
+                                else: reply_text = "找不到可復原的項目。"
+                        except: reply_text = "格式錯誤。"
                     elif t_lower in ["categories", "cat"] or t_lower.startswith("cat @") or t_lower.startswith("categories @"):
                         # 主分類管理與分頁處理
                         offset = 0; offset_match = re.search(r'@(\d+)$', t)
