@@ -2,7 +2,7 @@
 import os
 import re
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Table, Text, JSON, func, case
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Table, Text, JSON, func, case, text, inspect
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker, scoped_session
 
 # --- 初始化配置 ---
@@ -91,19 +91,36 @@ class UserState(Base):
 def init_db():
     Base.metadata.create_all(bind=engine)
     
-    # 針對 SQLite 自動補齊 is_deleted 欄位 (防止舊資料庫報錯)
-    if db_type == "Local SQLite":
-        import sqlite3
-        conn = sqlite3.connect("todo.db")
-        cursor = conn.cursor()
-        try:
-            cursor.execute("SELECT is_deleted FROM items LIMIT 1")
-        except sqlite3.OperationalError:
-            print("Detected missing 'is_deleted' column. Adding it now...")
-            cursor.execute("ALTER TABLE items ADD COLUMN is_deleted INTEGER DEFAULT 0")
-            conn.commit()
-        conn.close()
-    
+    # 檢查並補齊缺失的欄位 (適用於已存在的資料庫)
+    inspector = inspect(engine)
+    if 'items' in inspector.get_table_names():
+        columns = {c['name'] for c in inspector.get_columns('items')}
+        
+        with engine.begin() as conn:
+            # 1. 補齊 is_deleted 欄位
+            if 'is_deleted' not in columns:
+                print(f"Adding missing 'is_deleted' column to 'items' table ({db_type})...")
+                conn.execute(text("ALTER TABLE items ADD COLUMN is_deleted INTEGER DEFAULT 0"))
+            
+            # 2. 補齊 description 欄位 (處理舊版可能是 desc 的情況)
+            if 'description' not in columns:
+                if 'desc' in columns:
+                    print(f"Renaming 'desc' to 'description' in 'items' table ({db_type})...")
+                    if db_type == "Local SQLite":
+                        # SQLite 舊版本不支援 RENAME COLUMN，直接新增並遷移資料
+                        conn.execute(text("ALTER TABLE items ADD COLUMN description TEXT"))
+                        conn.execute(text("UPDATE items SET description = desc"))
+                    else:
+                        conn.execute(text("ALTER TABLE items RENAME COLUMN desc TO description"))
+                else:
+                    print(f"Adding missing 'description' column to 'items' table ({db_type})...")
+                    conn.execute(text("ALTER TABLE items ADD COLUMN description TEXT"))
+            
+            # 3. 補齊 completed_date 欄位
+            if 'completed_date' not in columns:
+                print(f"Adding missing 'completed_date' column to 'items' table ({db_type})...")
+                conn.execute(text("ALTER TABLE items ADD COLUMN completed_date TEXT"))
+
     print(f"Database initialized ({app_env}): {db_type}")
 
 def get_or_create(session, model, **kwargs):
