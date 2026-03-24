@@ -63,48 +63,38 @@
 
 - **Backend**: Python 3.9+, Flask
 - **Messaging**: LINE Messaging API (line-bot-sdk v3)
-- **Database**: SQLite (Local), PostgreSQL (Production)
+- **Database**: SQLite (Local), PostgreSQL (Production), Alembic (自動檢查並更新資料庫結構)
 - **ORM**: SQLAlchemy (支援資料庫層級的對話狀態持久化)
 - **Tunneling**: pyngrok (用於本地開發接收 Webhook)
 - **UI Framework**: LINE Flex Message (JSON-based modern UI)
 
 ---
 
-## 資料庫
+## 資料庫與遷移 (Database & Migrations)
 
-### 專案採用關聯式設計：
+本專案使用 SQLAlchemy 作為 ORM，並導入 **Alembic** 進行資料庫版本管理。這確保了開發與生產環境的資料庫結構始終保持一致。
+
+### 核心資料表：
 
 - **`categories`**: `id`, `user_id`, `name`
 - **`sub_categories`**: `id`, `category_id`, `name`
 - **`tags`**: `id`, `user_id`, `name`
-- **`items`**: `id`, `user_id`, `category_id`, `title`, `place`, `done`, `completed_date`
+- **`items`**: `id`, `user_id`, `category_id`, `sub_category_id`, `title`, `description`, `place`, `done`, `is_deleted`, `completed_date`
 - **`item_sub_categories`**: `item_id`, `sub_category_id` (多對多)
 - **`item_tags`**: `item_id`, `tag_id` (多對多)
 
 詳情請參閱 [database_schema.md](./database_schema.md)。
 
-### 專案的資料庫 (`todo.db`) 主要包含以下資料表：
+### 如何進行結構變更：
 
-1.  **`categories`**: 儲存使用者建立的主分類。
-    - `id`: 主鍵
-    - `user_id`: LINE 使用者 ID
-    - `name`: 分類名稱
+當您修改了 `database.py` 中的模型（例如新增欄位）時，請執行以下步驟：
 
-2.  **`sub_categories`**: 儲存子分類，並關聯到主分類。
-    - `id`: 主鍵
-    - `category_id`: 關聯到 `categories` 表的 ID
-    - `name`: 子分類名稱
-
-3.  **`items`**: 儲存待辦事項的詳細內容。
-    - `id`: 主鍵
-    - `user_id`: LINE 使用者 ID
-    - `category_id`: 關聯到 `categories` 表的 ID
-    - `sub_category_id`: 關聯到 `sub_categories` 表的 ID
-    - `title`: 待辦事項標題
-    - `desc`: 描述（目前版本尚未使用）
-    - `place`: 地點
-    - `done`: 完成狀態 (0: 未完成, 1: 已完成)
-    - `completed_date`: 完成日期
+1. **產生遷移腳本**：
+   ```bash
+   alembic revision --autogenerate -m "描述變更內容"
+   ```
+2. **自動更新**：
+   部屬後，程式會在啟動時透過 `db.init_db()` 自動執行 `alembic upgrade head`，您不需要手動操作資料庫。
 
 ---
 

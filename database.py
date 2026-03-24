@@ -71,6 +71,7 @@ class Item(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(String, index=True, nullable=False)
     category_id = Column(Integer, ForeignKey('categories.id', ondelete='CASCADE'), nullable=False)
+    sub_category_id = Column(Integer, ForeignKey('sub_categories.id', ondelete='SET NULL'), nullable=True)
     title = Column(String, nullable=False)
     description = Column(Text)
     place = Column(String)
@@ -88,39 +89,24 @@ class UserState(Base):
 
 # --- 資料庫操作介面 (API) ---
 
+def run_migrations():
+    """執行 Alembic 資料庫遷移"""
+    from alembic.config import Config
+    from alembic import command
+    alembic_cfg = Config("alembic.ini")
+    try:
+        command.upgrade(alembic_cfg, "head")
+        print("Alembic migrations applied successfully.")
+    except Exception as e:
+        print(f"Error applying migrations: {e}")
+
 def init_db():
+    # 建立所有表 (如果不存在)
     Base.metadata.create_all(bind=engine)
     
-    # 檢查並補齊缺失的欄位 (適用於已存在的資料庫)
-    inspector = inspect(engine)
-    if 'items' in inspector.get_table_names():
-        columns = {c['name'] for c in inspector.get_columns('items')}
-        
-        with engine.begin() as conn:
-            # 1. 補齊 is_deleted 欄位
-            if 'is_deleted' not in columns:
-                print(f"Adding missing 'is_deleted' column to 'items' table ({db_type})...")
-                conn.execute(text("ALTER TABLE items ADD COLUMN is_deleted INTEGER DEFAULT 0"))
-            
-            # 2. 補齊 description 欄位 (處理舊版可能是 desc 的情況)
-            if 'description' not in columns:
-                if 'desc' in columns:
-                    print(f"Renaming 'desc' to 'description' in 'items' table ({db_type})...")
-                    if db_type == "Local SQLite":
-                        # SQLite 舊版本不支援 RENAME COLUMN，直接新增並遷移資料
-                        conn.execute(text("ALTER TABLE items ADD COLUMN description TEXT"))
-                        conn.execute(text("UPDATE items SET description = desc"))
-                    else:
-                        conn.execute(text("ALTER TABLE items RENAME COLUMN desc TO description"))
-                else:
-                    print(f"Adding missing 'description' column to 'items' table ({db_type})...")
-                    conn.execute(text("ALTER TABLE items ADD COLUMN description TEXT"))
-            
-            # 3. 補齊 completed_date 欄位
-            if 'completed_date' not in columns:
-                print(f"Adding missing 'completed_date' column to 'items' table ({db_type})...")
-                conn.execute(text("ALTER TABLE items ADD COLUMN completed_date TEXT"))
-
+    # 執行遷移以補齊可能缺失的欄位
+    run_migrations()
+    
     print(f"Database initialized ({app_env}): {db_type}")
 
 def get_or_create(session, model, **kwargs):
