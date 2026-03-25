@@ -370,6 +370,7 @@ def get_all_data_json():
                     "description": i.description,
                     "place": i.place,
                     "done": i.done,
+                    "is_deleted": i.is_deleted,
                     "completed_date": i.completed_date,
                     "sub_categories": [sc.name for sc in i.sub_categories],
                     "tags": [t.name for t in i.tags]

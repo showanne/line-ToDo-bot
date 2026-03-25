@@ -1,244 +1,518 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-TW" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE To-Do 看板</title>
+    <title>LINE To-Do 戰術看板</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary-color: #E67E22;
-            --bg-color: #F8F9FA;
-            --sidebar-bg: #FFFFFF;
-            --text-main: #343A40;
-            --text-secondary: #6C757D;
-            --accent-green: #1DB446;
-            --card-shadow: 0 4px 12px rgba(0,0,0,0.08);
-            --transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            --glitch-color: #00fff2;
+            --accent-color: #E67E22;
+            --danger-color: #ef4444;
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif; background: var(--bg-color); color: var(--text-main); display: flex; height: 100vh; overflow: hidden; }
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #0a0a0c;
+            color: #e2e8f0;
+        }
 
-        /* Sidebar */
-        aside { width: 280px; background: var(--sidebar-bg); border-right: 1px solid #EEE; display: flex; flex-direction: column; overflow-y: auto; box-shadow: 2px 0 10px rgba(0,0,0,0.02); }
-        .sidebar-header { padding: 30px 20px; font-size: 20px; font-weight: 800; color: var(--primary-color); border-bottom: 1px solid #F5F5F5; }
-        .sidebar-section { padding: 20px 0; border-bottom: 1px solid #F5F5F5; }
-        .sidebar-section h3 { padding: 0 20px 10px; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-secondary); }
-        .nav-item { padding: 10px 20px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-size: 15px; color: var(--text-main); transition: var(--transition); border-left: 4px solid transparent; }
-        .nav-item:hover { background: #FFF5EC; color: var(--primary-color); }
-        .nav-item.active { background: #FFF5EC; color: var(--primary-color); border-left-color: var(--primary-color); font-weight: bold; }
-        .badge { background: #EEE; color: #888; padding: 2px 8px; border-radius: 12px; font-size: 11px; }
-        .active .badge { background: var(--primary-color); color: #FFF; }
+        .font-header {
+            font-family: 'Chakra Petch', 'Noto Sans TC', sans-serif;
+        }
 
-        /* Main Content */
-        main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-        .content-header { padding: 30px 40px; background: #FFF; border-bottom: 1px solid #EEE; display: flex; justify-content: space-between; align-items: center; }
-        .content-header h1 { font-size: 24px; font-weight: 800; }
-        .status-summary { display: flex; gap: 20px; }
-        .status-summary span { font-size: 14px; color: var(--text-secondary); }
+        /* Glitch Effect */
+        @keyframes glitch {
+            0% { transform: translate(0); }
+            20% { transform: translate(-2px, 2px); }
+            40% { transform: translate(-2px, -2px); }
+            60% { transform: translate(2px, 2px); }
+            80% { transform: translate(2px, -2px); }
+            100% { transform: translate(0); }
+        }
 
-        .items-grid { padding: 30px 40px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 25px; align-content: start; }
+        .glitch-hover:hover .glitch-text {
+            animation: glitch 0.3s cubic-bezier(.25,.46,.45,.94) both infinite;
+            text-shadow: 2px 0 var(--glitch-color), -2px 0 #ff00c1;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #1a1a1e; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--accent-color); }
+
+        /* Sidebar Glassmorphism */
+        .sidebar-bg {
+            background: rgba(15, 15, 18, 0.95);
+            backdrop-filter: blur(10px);
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        /* Layering Contrast */
+        .layer-1 { background: #141417; }
+        .layer-2 { background: #1c1c21; }
         
-        /* Card UI */
-        .todo-card { background: #FFF; padding: 25px; border-radius: 16px; box-shadow: var(--card-shadow); transition: var(--transition); border: 1px solid #F0F0F0; position: relative; overflow: hidden; }
-        .todo-card:hover { transform: translateY(-5px); box-shadow: 0 8px 20px rgba(0,0,0,0.12); }
-        .todo-card.done { opacity: 0.6; }
-        .todo-card.done .title { text-decoration: line-through; color: var(--text-secondary); }
+        /* Card Hover Effects */
+        .card-zoom {
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .card-zoom:hover {
+            transform: scale(1.02);
+            filter: brightness(1.15);
+            border-color: rgba(230, 126, 34, 0.5);
+            box-shadow: 0 0 30px rgba(230, 126, 34, 0.1);
+        }
 
-        .card-path { font-size: 11px; color: var(--text-secondary); margin-bottom: 8px; font-weight: bold; }
-        .card-title { font-size: 18px; font-weight: 700; margin-bottom: 15px; line-height: 1.4; }
-        
-        .card-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px; }
-        .tag-pill { font-size: 11px; padding: 4px 10px; border-radius: 8px; background: #E8F5E9; color: var(--accent-green); }
-        .place-pill { font-size: 11px; padding: 4px 10px; border-radius: 8px; background: #E3F2FD; color: #1E88E5; }
+        .status-dot {
+            box-shadow: 0 0 8px currentColor;
+        }
 
-        .card-footer { border-top: 1px solid #F5F5F5; padding-top: 15px; display: flex; justify-content: space-between; align-items: center; }
-        .item-id { color: #BBB; font-size: 12px; font-family: monospace; }
-        .status-badge { font-size: 11px; padding: 4px 12px; border-radius: 20px; }
-        .status-pending { background: #FFF3E0; color: #EF6C00; }
-        .status-done { background: #F1F8E9; color: #33691E; }
+        /* Sidebar Section Header */
+        .section-tag {
+            position: relative;
+            padding-left: 12px;
+        }
+        .section-tag::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 3px;
+            height: 14px;
+            background: var(--accent-color);
+        }
 
-        /* Animation */
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        .todo-card { animation: fadeIn 0.4s ease forwards; }
+        /* Filter Chip */
+        .filter-chip {
+            transition: all 0.2s ease;
+        }
+        .filter-chip.active {
+            background: var(--accent-color);
+            color: white;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 10px rgba(230, 126, 34, 0.3);
+        }
 
-        /* Scrollbar Customization */
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #DDD; border-radius: 10px; }
-        ::-webkit-scrollbar-thumb:hover { background: #CCC; }
+        /* Table Styles */
+        .tactical-table th {
+            background: rgba(255, 255, 255, 0.02);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-size: 10px;
+            color: #64748b;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .tactical-table tr {
+            transition: all 0.2s ease;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+        }
+        .tactical-table tr:hover {
+            background: rgba(230, 126, 34, 0.05);
+        }
+        .tactical-table td {
+            padding: 1rem;
+            vertical-align: middle;
+        }
+
+        /* View Toggle Button */
+        .view-btn.active {
+            background: var(--accent-color);
+            color: white;
+            box-shadow: 0 0 15px rgba(230, 126, 34, 0.4);
+        }
+
+        /* Status Tab Button */
+        .status-tab {
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        .status-tab::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--accent-color);
+            transition: width 0.3s ease;
+        }
+        .status-tab.active::after {
+            width: 100%;
+        }
+        .status-tab.active {
+            color: var(--accent-color);
+        }
+        .status-tab.active.deleted::after {
+            background: var(--danger-color);
+        }
+        .status-tab.active.deleted {
+            color: var(--danger-color);
+        }
     </style>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        cyber: {
+                            black: '#0a0a0c',
+                            darker: '#0f0f12',
+                            dark: '#141417',
+                            light: '#1c1c21',
+                            accent: '#E67E22',
+                            neon: '#00fff2',
+                            danger: '#ef4444'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
 </head>
-<body>
-    <aside id="sidebar">
-        <div class="sidebar-header">TO-DO 看板</div>
+<body class="flex h-screen overflow-hidden">
+    <!-- Sidebar -->
+    <aside class="w-72 sidebar-bg flex flex-col z-20">
+        <div class="p-8 border-b border-white/5">
+            <h1 class="font-header text-2xl font-bold tracking-tighter text-cyber-accent flex items-center gap-2 glitch-hover cursor-pointer">
+                <span class="glitch-text">TODO_SYSTEM</span>
+                <span class="text-xs font-light bg-cyber-accent/10 px-2 py-0.5 rounded border border-cyber-accent/20">V2.0</span>
+            </h1>
+        </div>
         
-        <div class="sidebar-section">
-            <div class="nav-item active" id="btn-all" onclick="filterBy('all', null, this)">
-                <span>📂 所有事項</span>
-                <span class="badge" id="total-badge">0</span>
+        <div class="flex-1 overflow-y-auto py-6 px-4 space-y-8">
+            <!-- Main Navigation -->
+            <nav class="space-y-1">
+                <div id="btn-all" onclick="filterBy('all', null)" 
+                     class="group flex items-center justify-between px-4 py-3 rounded-lg border cursor-pointer transition-all">
+                    <span class="font-header font-medium flex items-center gap-3 uppercase tracking-wider">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+                        All Units
+                    </span>
+                    <span id="total-badge" class="font-header text-xs bg-cyber-accent text-white px-2 py-0.5 rounded-full">0</span>
+                </div>
+            </nav>
+
+            <!-- Categories -->
+            <div class="space-y-4">
+                <h3 class="section-tag font-header text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Categories / 任務分類</h3>
+                <div id="categories-list" class="space-y-2">
+                    <!-- Dynamic Categories -->
+                </div>
             </div>
         </div>
 
-        <div class="sidebar-section" id="categories-list">
-            <h3>主分類</h3>
-        </div>
-
-        <div class="sidebar-section" id="tags-list">
-            <h3>熱門標籤</h3>
-        </div>
-
-        <div class="sidebar-section" id="places-list">
-            <h3>地點</h3>
+        <div class="p-4 border-t border-white/5 bg-black/20">
+            <div class="flex items-center gap-3 text-slate-500 text-xs font-header">
+                <div class="w-2 h-2 rounded-full bg-green-500 status-dot"></div>
+                SYSTEM_STABLE // NO_ERRORS
+            </div>
         </div>
     </aside>
 
-    <main>
-        <header class="content-header">
-            <h1 id="current-filter-title">所有待辦事項</h1>
-            <div class="status-summary">
-                <span>未完成: <strong id="pending-count" style="color: var(--primary-color)">0</strong></span>
-                <span>已完成: <strong id="done-count">0</strong></span>
+    <!-- Main Content -->
+    <main class="flex-1 flex flex-col relative layer-1">
+        <!-- Background Grid -->
+        <div class="absolute inset-0 opacity-[0.03] pointer-events-none" 
+             style="background-image: linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px); background-size: 40px 40px;"></div>
+        
+        <!-- Header -->
+        <header class="h-24 flex items-center justify-between px-10 border-b border-white/5 z-10 bg-cyber-darker/50 backdrop-blur-sm">
+            <div class="flex items-center gap-8">
+                <div>
+                    <div class="text-[10px] font-header font-bold text-cyber-accent uppercase tracking-widest mb-1 opacity-70">Current Sector</div>
+                    <h2 id="current-filter-title" class="text-3xl font-bold font-header tracking-tight">OVERVIEW_ALL</h2>
+                </div>
+                
+                <!-- View Switcher -->
+                <div class="flex bg-black/40 p-1 rounded-lg border border-white/5">
+                    <button id="view-card" onclick="setViewMode('card')" 
+                            class="view-btn px-4 py-1.5 rounded-md text-[10px] font-header font-bold flex items-center gap-2 transition-all">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+                        GRID
+                    </button>
+                    <button id="view-table" onclick="setViewMode('table')" 
+                            class="view-btn px-4 py-1.5 rounded-md text-[10px] font-header font-bold flex items-center gap-2 transition-all">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        TABLE
+                    </button>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-12">
+                <!-- Status Tabs -->
+                <div class="flex items-center gap-6 border-r border-white/5 pr-10">
+                    <button onclick="setStatusFilter('active')" id="status-active" class="status-tab active font-header text-xs font-bold uppercase tracking-widest py-2">Active</button>
+                    <button onclick="setStatusFilter('done')" id="status-done" class="status-tab font-header text-xs font-bold uppercase tracking-widest py-2">Archived</button>
+                    <button onclick="setStatusFilter('deleted')" id="status-deleted" class="status-tab deleted font-header text-xs font-bold uppercase tracking-widest py-2">Deleted</button>
+                </div>
+
+                <div class="flex items-center gap-8">
+                    <div class="text-right">
+                        <div class="text-[10px] font-header text-slate-500 uppercase tracking-widest mb-1">Total_Units</div>
+                        <div id="pending-count" class="text-2xl font-header font-bold text-cyber-accent">0</div>
+                    </div>
+                </div>
             </div>
         </header>
 
-        <div class="items-grid" id="items-grid">
+        <!-- Filter Bar -->
+        <div id="filter-bar" class="z-10 bg-cyber-dark/80 backdrop-blur border-b border-white/5 px-10 py-3 flex items-center gap-6 overflow-x-auto whitespace-nowrap hidden">
+            <div class="flex items-center gap-3 border-r border-white/10 pr-6">
+                <span class="text-[10px] font-header font-bold text-slate-500 uppercase tracking-widest">Signal_Filters</span>
+                <svg class="w-3 h-3 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4.5h18m-18 5h18m-18 5h18m-18 5h18"></path></svg>
+            </div>
+            <div id="active-filters-container" class="flex items-center gap-4"></div>
+        </div>
+
+        <!-- Content Container -->
+        <div id="content-container" class="flex-1 overflow-y-auto p-10 z-10">
+            <!-- Items rendered here -->
         </div>
     </main>
 
     <script>
-        let allData = { items: [], categories: [], tags: [], places: [] };
-        let currentFilter = { type: 'all', val: null };
+        let allData = { items: [], categories: [], tags: [], places: [], subCategories: {} };
+        let filters = { category: null, subcategory: null, tag: null, place: null, status: 'active' };
+        let viewMode = localStorage.getItem('viewMode') || 'card';
 
         async function loadData() {
             try {
-                const [itemsRes, catsRes, tagsRes, placesRes] = await Promise.all([
+                const [itemsRes, catsRes, tagsRes, placesRes, subCatsRes] = await Promise.all([
                     fetch('/api/data'),
                     fetch('/api/categories'),
                     fetch('/api/tags'),
-                    fetch('/api/places')
+                    fetch('/api/places'),
+                    fetch('/api/sub-categories')
                 ]);
 
                 allData.items = (await itemsRes.json()).items || [];
                 allData.categories = await catsRes.json() || [];
                 allData.tags = await tagsRes.json() || [];
                 allData.places = await placesRes.json() || [];
+                allData.subCategories = await subCatsRes.json() || {};
 
                 renderSidebar();
+                updateViewSwitcher();
+                updateStatusTabs();
                 applyFilter();
             } catch (err) {
-                console.error('資料載入失敗:', err);
+                console.error('Data loading failure:', err);
             }
         }
 
-        function renderSidebar() {
-            const catList = document.getElementById('categories-list');
-            catList.innerHTML = '<h3>主分類</h3>';
-            allData.categories.forEach(cat => {
-                const item = createNavItem(`📁 ${cat.name}`, cat.count, () => filterBy('category', cat.name, item));
-                catList.appendChild(item);
-                if (currentFilter.type === 'category' && currentFilter.val === cat.name) item.classList.add('active');
-            });
-
-            const tagList = document.getElementById('tags-list');
-            tagList.innerHTML = '<h3>熱門標籤</h3>';
-            allData.tags.forEach(tag => {
-                const item = createNavItem(`# ${tag.name}`, tag.count, () => filterBy('tag', tag.name, item));
-                tagList.appendChild(item);
-                if (currentFilter.type === 'tag' && currentFilter.val === tag.name) item.classList.add('active');
-            });
-
-            const placeList = document.getElementById('places-list');
-            placeList.innerHTML = '<h3>地點</h3>';
-            allData.places.forEach(p => {
-                const item = createNavItem(`📍 ${p.name}`, p.count, () => filterBy('place', p.name, item));
-                placeList.appendChild(item);
-                if (currentFilter.type === 'place' && currentFilter.val === p.name) item.classList.add('active');
-            });
-
-            document.getElementById('total-badge').innerText = allData.items.filter(i => !i.done).length;
-        }
-
-        function createNavItem(text, count, onClick) {
-            const div = document.createElement('div');
-            div.className = 'nav-item';
-            div.innerHTML = `<span>${text}</span><span class="badge">${count}</span>`;
-            div.onclick = (e) => {
-                onClick();
-            };
-            return div;
-        }
-
-        function filterBy(type, val, element) {
-            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-            if (element) element.classList.add('active');
-            
-            currentFilter = { type, val };
+        function setViewMode(mode) {
+            viewMode = mode;
+            localStorage.setItem('viewMode', mode);
+            updateViewSwitcher();
             applyFilter();
+        }
+
+        function setStatusFilter(status) {
+            filters.status = status;
+            updateStatusTabs();
+            applyFilter();
+        }
+
+        function updateViewSwitcher() {
+            document.querySelectorAll('.view-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`view-${viewMode}`).classList.add('active');
+        }
+
+        function updateStatusTabs() {
+            document.querySelectorAll('.status-tab').forEach(tab => tab.classList.remove('active'));
+            document.getElementById(`status-${filters.status}`).classList.add('active');
+        }
+
+        function renderSidebar() {
+            const isAll = !filters.category && !filters.subcategory && !filters.tag && !filters.place;
+            document.getElementById('btn-all').className = `group flex items-center justify-between px-4 py-3 rounded-lg border cursor-pointer transition-all ${isAll ? 'bg-cyber-accent/10 border-cyber-accent/20 text-cyber-accent' : 'border-white/5 text-slate-400 hover:bg-white/5'}`;
+
+            const catList = document.getElementById('categories-list');
+            catList.innerHTML = '';
+            allData.categories.forEach(cat => {
+                const subs = allData.subCategories[cat.name] || [];
+                const isCatActive = filters.category === cat.name;
+                const catEl = document.createElement('div');
+                catEl.className = 'space-y-1';
+                catEl.innerHTML = `
+                    <div onclick="filterBy('category', '${cat.name}')" 
+                         class="group flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-all hover:bg-white/5 ${isCatActive ? 'bg-white/10 text-cyber-accent border border-white/5' : 'text-slate-400'}">
+                        <span class="font-header text-sm font-medium tracking-wide flex items-center gap-2">
+                            <span class="w-1.5 h-1.5 rounded-full ${isCatActive ? 'bg-cyber-accent status-dot' : 'bg-slate-600'}"></span>
+                            ${cat.name}
+                        </span>
+                        <span class="text-[10px] font-header opacity-50">${cat.count}</span>
+                    </div>
+                    <div class="pl-6 space-y-1">
+                        ${subs.map(sub => `
+                            <div onclick="filterBy('subcategory', '${sub.name}', '${cat.name}')" 
+                                 class="text-[11px] px-3 py-1.5 rounded border border-transparent cursor-pointer transition-all hover:text-white hover:bg-white/5 ${filters.subcategory === sub.name ? 'text-cyber-accent bg-cyber-accent/5 border-cyber-accent/10' : 'text-slate-500'}">
+                                ${sub.name} <span class="opacity-30 float-right">${sub.count}</span>
+                            </div>
+                        `).join('')}
+                    </div>`;
+                catList.appendChild(catEl);
+            });
+            document.getElementById('total-badge').innerText = allData.items.filter(i => !i.done && !i.is_deleted).length;
+        }
+
+        function renderFilterBar() {
+            const bar = document.getElementById('filter-bar');
+            const container = document.getElementById('active-filters-container');
+            container.innerHTML = '';
+            const availableTags = new Set();
+            const availablePlaces = new Set();
+            
+            // Filters based on current Category/Subcategory and Status
+            const baseItems = allData.items.filter(i => {
+                const catMatch = !filters.category || i.category_name === filters.category;
+                const subMatch = !filters.subcategory || i.sub_categories.includes(filters.subcategory);
+                const statusMatch = (filters.status === 'active' && !i.done && !i.is_deleted) ||
+                                    (filters.status === 'done' && i.done && !i.is_deleted) ||
+                                    (filters.status === 'deleted' && i.is_deleted);
+                return catMatch && subMatch && statusMatch;
+            });
+
+            baseItems.forEach(i => {
+                if (i.tags) i.tags.forEach(t => availableTags.add(t));
+                if (i.place) availablePlaces.add(i.place);
+            });
+
+            if (availableTags.size === 0 && availablePlaces.size === 0) { bar.classList.add('hidden'); return; }
+            bar.classList.remove('hidden');
+            availableTags.forEach(tag => {
+                const isActive = filters.tag === tag;
+                const chip = document.createElement('div');
+                chip.className = `filter-chip px-3 py-1 rounded-full border border-white/10 text-[10px] font-header cursor-pointer uppercase tracking-wider ${isActive ? 'active' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`;
+                chip.innerText = `#${tag}`;
+                chip.onclick = () => filterBy('tag', tag);
+                container.appendChild(chip);
+            });
+            if (availableTags.size > 0 && availablePlaces.size > 0) container.appendChild(Object.assign(document.createElement('div'), {className: 'w-px h-4 bg-white/10 mx-2'}));
+            availablePlaces.forEach(place => {
+                const isActive = filters.place === place;
+                const chip = document.createElement('div');
+                chip.className = `filter-chip px-3 py-1 rounded-full border border-white/10 text-[10px] font-header cursor-pointer uppercase tracking-wider ${isActive ? 'active' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`;
+                chip.innerText = `📍 ${place}`;
+                chip.onclick = () => filterBy('place', place);
+                container.appendChild(chip);
+            });
+        }
+
+        function filterBy(type, val, parentCat = null) {
+            if (type === 'all') { filters.category = null; filters.subcategory = null; filters.tag = null; filters.place = null; }
+            else if (type === 'category') { if (filters.category === val && !filters.subcategory) filters.category = null; else { filters.category = val; filters.subcategory = null; } }
+            else if (type === 'subcategory') { if (filters.subcategory === val) filters.subcategory = null; else { filters.category = parentCat; filters.subcategory = val; } }
+            else if (type === 'tag') filters.tag = (filters.tag === val) ? null : val;
+            else if (type === 'place') filters.place = (filters.place === val) ? null : val;
+            renderSidebar(); applyFilter();
         }
 
         function applyFilter() {
             let filtered = allData.items;
-            let title = '所有待辦事項';
+            let titles = [];
+            
+            // Status Filter
+            if (filters.status === 'active') filtered = filtered.filter(i => !i.done && !i.is_deleted);
+            else if (filters.status === 'done') filtered = filtered.filter(i => i.done && !i.is_deleted);
+            else if (filters.status === 'deleted') filtered = filtered.filter(i => i.is_deleted);
 
-            if (currentFilter.type === 'category') {
-                filtered = allData.items.filter(i => i.category_name === currentFilter.val);
-                title = `主分類: ${currentFilter.val}`;
-            } else if (currentFilter.type === 'tag') {
-                filtered = allData.items.filter(i => i.tags && i.tags.includes(currentFilter.val));
-                title = `標籤: #${currentFilter.val}`;
-            } else if (currentFilter.type === 'place') {
-                filtered = allData.items.filter(i => i.place === currentFilter.val);
-                title = `地點: @${currentFilter.val}`;
-            }
+            if (filters.category) { filtered = filtered.filter(i => i.category_name === filters.category); titles.push(filters.category.toUpperCase()); }
+            if (filters.subcategory) { filtered = filtered.filter(i => i.sub_categories.includes(filters.subcategory)); titles.push(filters.subcategory.toUpperCase()); }
+            
+            renderFilterBar();
 
-            document.getElementById('current-filter-title').innerText = title;
-            renderItems(filtered);
+            if (filters.tag) { filtered = filtered.filter(i => i.tags && i.tags.includes(filters.tag)); titles.push(`#${filters.tag.toUpperCase()}`); }
+            if (filters.place) { filtered = filtered.filter(i => i.place === filters.place); titles.push(`@${filters.place.toUpperCase()}`); }
+            
+            document.getElementById('current-filter-title').innerText = titles.length > 0 ? titles.join(' // ') : 'OVERVIEW_ALL';
+            renderView(filtered);
         }
 
-        function renderItems(items) {
-            const grid = document.getElementById('items-grid');
-            grid.innerHTML = '';
-            
-            const pending = items.filter(i => !i.done);
-            const done = items.filter(i => i.done);
-            
-            document.getElementById('pending-count').innerText = pending.length;
-            document.getElementById('done-count').innerText = done.length;
+        function renderView(items) {
+            const container = document.getElementById('content-container');
+            container.innerHTML = '';
+            document.getElementById('pending-count').innerText = items.length;
 
             if (items.length === 0) {
-                grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 100px; color: #CCC; font-size: 20px;">這裡還沒有事項喔 😊</div>';
+                container.innerHTML = `<div class="py-32 flex flex-col items-center justify-center opacity-20"><div class="text-6xl font-header mb-4 tracking-tighter">NO_DATA</div><div class="text-sm font-header uppercase tracking-widest">Awaiting tactical input...</div></div>`;
                 return;
             }
 
-            items.forEach(item => {
-                const card = document.createElement('div');
-                card.className = `todo-card ${item.done ? 'done' : ''}`;
-                
-                let subCats = item.sub_categories ? item.sub_categories.join(', ') : '';
-                let tags = item.tags ? item.tags.map(t => `<span class="tag-pill">#${t}</span>`).join('') : '';
-                let place = item.place ? `<span class="place-pill">📍 ${item.place}</span>` : '';
+            if (viewMode === 'table') renderTable(items, container);
+            else renderCards(items, container);
+        }
 
+        function renderCards(items, container) {
+            const grid = document.createElement('div');
+            grid.className = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6 content-start";
+            items.forEach((item, idx) => {
+                const card = document.createElement('div');
+                const isDeleted = item.is_deleted;
+                const accent = isDeleted ? 'cyber-danger' : 'cyber-accent';
+                const accentHex = isDeleted ? '#ef4444' : '#E67E22';
+                
+                card.className = `group relative p-6 rounded-xl border border-white/5 layer-2 card-zoom flex flex-col justify-between ${item.done ? 'opacity-50 grayscale' : ''}`;
+                let tags = item.tags ? item.tags.map(t => `<span class="text-[10px] text-cyber-neon border border-cyber-neon/20 bg-cyber-neon/5 px-2 py-0.5 rounded">#${t}</span>`).join('') : '';
+                let place = item.place ? `<span class="flex items-center gap-1.5 text-[10px] text-slate-400"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>${item.place}</span>` : '';
+                
                 card.innerHTML = `
-                    <div class="card-path">${item.category_name} ${subCats ? ' > ' + subCats : ''}</div>
-                    <div class="card-title">${item.title}</div>
-                    <div class="card-meta">
-                        ${tags}
-                        ${place}
+                    <div>
+                        <div class="flex items-center justify-between mb-4">
+                            <span class="font-header text-[10px] font-bold text-${accent} uppercase tracking-widest bg-${accent}/10 px-2 py-0.5 rounded border border-${accent}/20">
+                                ${item.category_name} ${item.sub_categories ? '> ' + item.sub_categories.join('/') : ''}
+                            </span>
+                            <span class="font-header text-[10px] text-slate-600">ID_${item.id.toString().padStart(4, '0')}</span>
+                        </div>
+                        <h3 class="text-lg font-bold mb-4 leading-tight group-hover:text-${accent} transition-colors">${item.title}</h3>
+                        <div class="flex flex-wrap gap-2 mb-6">${tags}</div>
                     </div>
-                    <div class="card-footer">
-                        <span class="item-id">#${item.id}</span>
-                        <span class="status-badge ${item.done ? 'status-done' : 'status-pending'}">
-                            ${item.done ? '已完成' : '未完成'}
-                        </span>
+                    <div class="pt-4 border-t border-white/5 flex items-center justify-between">
+                        ${place || '<span></span>'}
+                        <div class="flex items-center gap-2">
+                            <div class="w-1.5 h-1.5 rounded-full ${isDeleted ? 'bg-cyber-danger' : (item.done ? 'bg-slate-500' : 'bg-cyber-accent')} status-dot" style="color: ${isDeleted ? '#ef4444' : (item.done ? '#64748b' : '#E67E22')}"></div>
+                            <span class="font-header text-[10px] uppercase tracking-wider ${isDeleted ? 'text-cyber-danger' : (item.done ? 'text-slate-500' : 'text-cyber-accent')}">
+                                ${isDeleted ? 'Terminated' : (item.done ? 'Archived' : 'Active')}
+                            </span>
+                        </div>
                     </div>
-                `;
+                    <div class="absolute inset-0 border border-${accent}/0 group-hover:border-${accent}/20 rounded-xl pointer-events-none transition-all duration-500"></div>`;
                 grid.appendChild(card);
             });
+            container.appendChild(grid);
+        }
+
+        function renderTable(items, container) {
+            const wrapper = document.createElement('div');
+            wrapper.className = "overflow-x-auto rounded-xl border border-white/5 layer-2";
+            const table = document.createElement('table');
+            table.className = "w-full tactical-table text-left border-collapse";
+            table.innerHTML = `<thead><tr><th class="p-4">ID</th><th class="p-4">Task Name</th><th class="p-4">Path</th><th class="p-4">Tags</th><th class="p-4">Location</th><th class="p-4 text-center">Status</th></tr></thead><tbody></tbody>`;
+            const tbody = table.querySelector('tbody');
+            items.forEach(item => {
+                const tr = document.createElement('tr');
+                const isDeleted = item.is_deleted;
+                tr.className = item.done ? 'opacity-50 grayscale' : (isDeleted ? 'text-cyber-danger/80' : '');
+                tr.innerHTML = `
+                    <td class="font-header text-xs text-slate-500">ID_${item.id.toString().padStart(4, '0')}</td>
+                    <td class="font-bold text-sm ${isDeleted ? 'line-through opacity-50' : ''}">${item.title}</td>
+                    <td class="text-xs text-slate-400 font-header uppercase">${item.category_name} <span class="opacity-30">/</span> ${item.sub_categories.join(', ')}</td>
+                    <td><div class="flex gap-1">${item.tags.map(t => `<span class="text-[9px] text-cyber-neon border border-cyber-neon/20 px-1.5 py-0.5 rounded">#${t}</span>`).join('')}</div></td>
+                    <td class="text-xs text-slate-500 font-header">${item.place || '---'}</td>
+                    <td class="text-center"><span class="inline-block w-2 h-2 rounded-full ${isDeleted ? 'bg-cyber-danger' : (item.done ? 'bg-slate-600' : 'bg-cyber-accent')} status-dot" style="color: ${isDeleted ? '#ef4444' : (item.done ? '#64748b' : '#E67E22')}"></span></td>`;
+                tbody.appendChild(tr);
+            });
+            wrapper.appendChild(table);
+            container.appendChild(wrapper);
         }
 
         loadData();
-        setInterval(loadData, 30000); // 30秒更新一次
+        setInterval(loadData, 30000);
     </script>
 </body>
 </html>
