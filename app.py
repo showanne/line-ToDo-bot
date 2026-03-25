@@ -163,11 +163,16 @@ def create_todo_flex_message(items, group_by_sub_category=False, offset=0, base_
     # 3. 處理分頁 (9+1 規則)
     total_bubbles = len(bubble_specs)
     has_next = False
-    next_offset = offset + 9
 
-    # 決定本次要顯示哪些卡片
-    display_specs = bubble_specs[offset:offset+9] if total_bubbles > offset + 10 else bubble_specs[offset:offset+10]
-    if total_bubbles > offset + 10: has_next = True
+    # 只有在剩餘數量確實超過 10 筆時，才需要分頁 (顯示 9 筆 + 1 筆下一頁)
+    # 如果剛好等於 10 筆，就直接顯示 10 筆，不觸發下一頁
+    if total_bubbles > offset + 10:
+        display_specs = bubble_specs[offset:offset+9]
+        has_next = True
+        next_offset = offset + 9
+    else:
+        display_specs = bubble_specs[offset:offset+10]
+        has_next = False
 
     bubbles = []
     # 決定當前要使用的導覽列
@@ -252,7 +257,7 @@ def create_item_detail_carousel(items, context_info=None, is_new=False, is_fail=
     """
     if not items and not is_fail: return None
     bubbles = []
-    
+
     # 決定導覽列
     nav_footer = create_context_navigation_footer(context_info.get("type") if context_info else "main")
 
@@ -266,10 +271,14 @@ def create_item_detail_carousel(items, context_info=None, is_new=False, is_fail=
             "footer": nav_footer
         })
     else:
-        for item in items:
+        # LINE Carousel 限制最多 10 個 Bubble
+        display_items = items[:10]
+        has_more = len(items) > 10
+
+        for item in display_items:
             # item: (id, title, desc, done, place, completed_date, category_name, sub_cats, tags)
             item_id, title, _, is_done, place, _, cat_name, sub_cats, tags = item
-            
+
             # 決定背景色
             if is_deleted:
                 bg_color = "#E74C3C" # 紅色：已刪除
@@ -283,19 +292,19 @@ def create_item_detail_carousel(items, context_info=None, is_new=False, is_fail=
             else:
                 bg_color = "#E67E22" # 橘色：尚未完成
                 status_label = f"{cat_name} / {sub_cats}" if sub_cats else cat_name
-            
+
             header = {
                 "type": "box", "layout": "vertical", "backgroundColor": bg_color, "paddingAll": "12px",
                 "contents": [{"type": "text", "text": status_label, "weight": "bold", "size": "lg", "color": "#ffffff", "align": "center"}]
             }
-            
+
             body_contents = [
                 {"type": "box", "layout": "horizontal", "contents": [
                     {"type": "text", "text": f"#{item_id}", "size": "xs", "color": "#aaaaaa", "flex": 0},
                     {"type": "text", "text": title, "weight": "bold", "size": "lg", "flex": 1, "margin": "md", "wrap": True}
                 ]}
             ]
-            
+
             if tags:
                 body_contents.append({"type": "text", "text": "#" + str(tags).replace(", ", " #"), "size": "sm", "color": "#1db446", "wrap": True, "margin": "md"})
             if place:
@@ -323,7 +332,20 @@ def create_item_detail_carousel(items, context_info=None, is_new=False, is_fail=
                 "body": {"type": "box", "layout": "vertical", "contents": body_contents},
                 "footer": nav_footer
             })
-        
+
+        # 如果超過 10 筆，加入提示卡片
+        if has_more:
+            bubbles.append({
+                "type": "bubble",
+                "body": {
+                    "type": "box", "layout": "vertical", "spacing": "md", "justifyContent": "center",
+                    "contents": [
+                        {"type": "text", "text": f"還有其餘 {len(items) - 10} 筆", "weight": "bold", "size": "md", "align": "center"},
+                        {"type": "text", "text": "已同步處理成功", "size": "xs", "color": "#aaaaaa", "align": "center"}
+                    ]
+                },
+                "footer": nav_footer
+            })
     return {"type": "carousel", "contents": bubbles} if len(bubbles) > 1 else bubbles[0]
 
 def create_category_management_flex(grouped_data, is_sub=False, offset=0, base_command="categories"):
@@ -691,7 +713,7 @@ def callback():
                             app.logger.error(f"Delete error: {e}")
                             reply_text = f"執行刪除時發生錯誤：{str(e)}"
                     elif t_lower.startswith("標記完成 "): # 修正：確保支援原有的長指令
-                        pass 
+                        pass
                     elif t_lower.startswith("完成 "):
                         try:
                             ids = [int(i.strip()) for i in t.split(" ", 1)[1].split(",")]
