@@ -33,28 +33,42 @@ def create_rich_menu():
         messaging_api_blob = MessagingApiBlob(api_client)
 
         # 1. Define the Rich Menu structure
-        # Size: 2500x843 (Half-size) or 2500x1686 (Full-size)
-        # We'll use 2500x843 for a sleek 3-column menu
+        # Size: 2500x1686 (Standard Full-size for 6-grid layout)
         rich_menu_request = RichMenuRequest(
-            size=RichMenuSize(width=2500, height=843),
+            size=RichMenuSize(width=2500, height=1686),
             selected=True,
-            name="Main Rich Menu",
-            chat_bar_text="選單",
+            name="ToDo Bot Main Rich Menu",
+            chat_bar_text="開啟選單",
             areas=[
-                # Area 1: list (清單)
+                # Row 1, Col 1: 新增 (add)
                 RichMenuArea(
                     bounds=RichMenuBounds(x=0, y=0, width=833, height=843),
-                    action=MessageAction(label="list", text="list")
+                    action=MessageAction(label="新增", text="新增")
                 ),
-                # Area 2: help (說明)
+                # Row 1, Col 2: 清單 (list)
                 RichMenuArea(
                     bounds=RichMenuBounds(x=833, y=0, width=833, height=843),
-                    action=MessageAction(label="help", text="help")
+                    action=MessageAction(label="清單", text="list")
                 ),
-                # Area 3: contact (聯絡我)
+                # Row 1, Col 3: 分類管理 (cat)
                 RichMenuArea(
                     bounds=RichMenuBounds(x=1666, y=0, width=834, height=843),
-                    action=MessageAction(label="contact", text="contact")
+                    action=MessageAction(label="分類", text="cat")
+                ),
+                # Row 2, Col 1: 標籤搜尋 (tags)
+                RichMenuArea(
+                    bounds=RichMenuBounds(x=0, y=843, width=833, height=843),
+                    action=MessageAction(label="標籤", text="tags")
+                ),
+                # Row 2, Col 2: 地點搜尋 (places)
+                RichMenuArea(
+                    bounds=RichMenuBounds(x=833, y=843, width=833, height=843),
+                    action=MessageAction(label="地點", text="places")
+                ),
+                # Row 2, Col 3: 指令說明 (help)
+                RichMenuArea(
+                    bounds=RichMenuBounds(x=1666, y=843, width=834, height=843),
+                    action=MessageAction(label="幫助", text="help")
                 )
             ]
         )
@@ -69,22 +83,21 @@ def create_rich_menu():
             return
 
         # 3. Next steps for the user
-        print("" + "="*50)
-        print("Rich Menu has been created, but you still need to:")
-        print(f"1. Upload an image (2500x843) to this Rich Menu ID: {rich_menu_id}")
-        print(f"2. Set it as the default Rich Menu.")
-        print("="*50)
+        print("\n" + "="*60)
+        print("Rich Menu 結構已建立！")
+        print(f"Rich Menu ID: {rich_menu_id}")
+        print("-" * 60)
+        print("注意事項：")
+        print("1. 請準備一張 2500x1686 像素的圖片。")
+        print("2. 確保圖片的按鈕位置與上述 2x3 佈局相符。")
+        print("="*60 + "\n")
 
-        print("Do you have an image file (e.g., 'rich_menu.png') in this folder?")
-        image_path = input("Enter image filename (or press Enter to skip upload): ").strip()
+        image_path = input("請輸入圖片檔案路徑 (例如 'rich_menu.png'，直接按 Enter 跳過上傳): ").strip()
 
         if image_path and os.path.exists(image_path):
             try:
                 with open(image_path, 'rb') as image:
                     image_data = image.read()
-                    # In v3, the binary data should be passed directly to 'body'.
-                    # If it fails with JSON error, it's often because the content-type header is missing or incorrect.
-                    # Content-Type: 'image/png', 'image/jpeg'.
                     messaging_api_blob.set_rich_menu_image(
                         rich_menu_id=rich_menu_id,
                         body=image_data,
@@ -98,9 +111,7 @@ def create_rich_menu():
             except Exception as e:
                 print(f"Error uploading image or setting default: {e}")
         else:
-            print("Skipped image upload. You can do this later via API or LINE Official Account Manager.")
-            print(f"To set as default manually via CLI (if you have an image later):")
-            print(f"python setup_rich_menu.py --upload {rich_menu_id} <your_image_path>")
+            print("已跳過圖片上傳。您可以之後再手動上傳。")
 
 if __name__ == "__main__":
     create_rich_menu()
