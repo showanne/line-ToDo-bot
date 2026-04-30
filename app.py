@@ -28,6 +28,8 @@ load_dotenv()
 
 # 引入自定義的資料庫操作模組
 import database as db
+from apscheduler.schedulers.background import BackgroundScheduler
+from sqlalchemy import text
 
 # 從環境變數讀取 LINE Channel 的存取憑證
 CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
@@ -42,6 +44,23 @@ parser = WebhookParser(channel_secret=CHANNEL_SECRET)
 
 # 初始化資料庫結構
 db.init_db()
+
+def keep_supabase_alive():
+    """每隔幾天執行一次簡單查詢，防止 Supabase 被暫停"""
+    try:
+        with db.engine.connect() as conn:
+            # 執行簡單的 SQL 查詢以維持連線活躍
+            conn.execute(text("SELECT 1"))
+            conn.commit()
+        print(f"[{datetime.now()}] Successfully pinged Supabase to keep it alive.")
+    except Exception as e:
+        print(f"[{datetime.now()}] Error pinging database: {e}")
+
+# 初始化並啟動背景排程器
+scheduler = BackgroundScheduler()
+# 每 6 天執行一次 (Supabase 預設 7 天不活動會暫停)
+scheduler.add_job(func=keep_supabase_alive, trigger="interval", days=6)
+scheduler.start()
 
 # ------------------------
 # 輔助函式 (Helper Functions)
