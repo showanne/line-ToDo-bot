@@ -81,12 +81,21 @@ def extract_metadata(text):
     clean_text = re.sub(r'@[^\s#@]+', '', clean_text).strip()
     return tags, place, clean_text
 
-def get_quick_reply(labels):
+def get_quick_reply(options):
     """
-    生成 LINE Quick Reply (快速回覆) 選項按鈕
+    生成 LINE Quick Reply (快速回覆) 選項按鈕。
+    options: 可以是字串列表 ["Label1", "Label2"]，
+             也可以是元組列表 [("Label1", "Text1"), ("Label2", "Text2")]。
     """
-    if not labels: return None
-    items = [QuickReplyItem(action=MessageAction(label=label, text=label)) for label in labels]
+    if not options: return None
+    items = []
+    for opt in options:
+        if isinstance(opt, tuple):
+            label, text = opt
+        else:
+            label = text = opt
+        # LINE 限制標籤長度為 20 字元
+        items.append(QuickReplyItem(action=MessageAction(label=label[:20], text=text)))
     return QuickReply(items=items)
 
 # ------------------------
@@ -95,47 +104,63 @@ def get_quick_reply(labels):
 
 def create_context_navigation_footer(context_type, target_val=None):
     """
-    根據當前情境生成智慧導覽列。
-    context_type: 'main', 'category', 'subcategory', 'tag', 'place', 'help'
-    target_val: 當前操作的目標值（如分類名、標籤名）
+    根據當前情境生成 2x2 四格智慧導覽列。
+    context_type: main, category, subcategory, success, deleted, search, mgmt_cat, mgmt_subcat
+    target_val: 可能是 "分類"、"分類/子類"、"標籤名" 等
     """
-    buttons = []
+    def btn(label, text):
+        return {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": label, "text": text}}
+
+    row1 = []; row2 = []
 
     if context_type == "main":
-        buttons = [
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": "🏷️標籤", "text": "tags"}},
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": "📍地點", "text": "places"}},
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": "➕新增", "text": "新增"}}
-        ]
+        row1 = [btn("⬅️ 首頁", "help"), btn("🔍 探索", "help")]
+        row2 = [btn("➕ 新增分類", "新增"), btn("📜 全部", "list")]
+
     elif context_type == "category":
-        buttons = [
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": "📁主類", "text": "cat"}},
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": f"➕新增至此", "text": f"新增 {target_val}"}}
-        ]
+        # target_val = 分類名
+        cat = target_val
+        row1 = [btn("⬅️ 主分類", "cat"), btn("🔍 探索", "help")]
+        row2 = [btn("➕ 新增子分類", f"新增 {cat}"), btn("📜 全部", f"list {cat}")]
+
     elif context_type == "subcategory":
-        buttons = [
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": f"⬅️回 {target_val}", "text": f"list {target_val}"}},
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": "🏷️標籤", "text": "tags"}}
-        ]
-    elif context_type == "tag" or context_type == "place":
-        label = "🏷️標籤" if context_type == "tag" else "📍地點"
-        cmd = "tags" if context_type == "tag" else "places"
-        buttons = [
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": label, "text": cmd}},
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": "📁分類", "text": "cat"}},
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": "➕新增", "text": "新增"}}
-        ]
-    else:
-        buttons = [
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": "📁分類", "text": "cat"}},
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": "🏷️標籤", "text": "tags"}},
-            {"type": "button", "style": "link", "height": "sm", "action": {"type": "message", "label": "📍地點", "text": "places"}}
-        ]
+        # target_val = 分類/子類
+        path = target_val
+        main_cat = path.split("/")[0] if "/" in path else path
+        row1 = [btn("⬅️ 上一層", f"list {main_cat}"), btn("🔍 探索", "help")]
+        row2 = [btn("➕ 新增至此", f"新增 {path}"), btn("🔄 排序", f"list {path}")]
+
+    elif context_type in ["success", "deleted"]:
+        # target_val = 分類 或 分類/子類
+        path = target_val or ""
+        row1 = [btn("⬅️ 返回清單", f"list {path}" if path else "list"), btn("🔍 探索", "help")]
+        row2 = [btn("➕ 再新增", f"新增 {path}" if path else "新增"), btn("📜 查看清單", f"list {path}" if path else "list")]
+
+    elif context_type == "search":
+        # target_val = #標籤 或 @地點
+        val = target_val or ""
+        search_type = "tags" if val.startswith("#") else "places"
+        row1 = [btn("⬅️ 搜尋", search_type), btn("🔍 探索", "help")]
+        row2 = [btn("🔁 重新搜尋", val), btn("📜 查看清單", f"list {val}")]
+
+    elif context_type == "mgmt_cat":
+        row1 = [btn("⬅️ 返回", "help"), btn("🔍 探索", "help")]
+        row2 = [btn("➕ 新增分類", "新增"), btn("📜 查看清單", "list")]
+
+    elif context_type == "mgmt_subcat":
+        cat = target_val or ""
+        row1 = [btn("⬅️ 返回", "cat"), btn("🔍 探索", "help")]
+        row2 = [btn("➕ 新增子分類", f"新增 {cat}" if cat else "新增"), btn("📜 查看清單", f"list {cat}" if cat else "list")]
+
+    else: # Default/Help
+        row1 = [btn("⬅️ 首頁", "help"), btn("🔍 探索", "help")]
+        row2 = [btn("➕ 新增項目", "新增"), btn("📜 全部清單", "list")]
 
     return {
         "type": "box", "layout": "vertical", "margin": "md", "contents": [
             {"type": "separator", "color": "#EEEEEE", "margin": "sm"},
-            {"type": "box", "layout": "horizontal", "spacing": "none", "contents": buttons}
+            {"type": "box", "layout": "horizontal", "contents": row1},
+            {"type": "box", "layout": "horizontal", "contents": row2}
         ]
     }
 
@@ -194,15 +219,27 @@ def create_todo_flex_message(items, group_by_sub_category=False, offset=0, base_
         has_next = False
 
     bubbles = []
-    # 決定當前要使用的導覽列
-    nav_footer = None
-    if context_info:
-        nav_footer = create_context_navigation_footer(context_info.get("type"), context_info.get("val"))
-    else:
-        nav_footer = create_context_navigation_footer("main")
-
     for spec in display_specs:
         contents = []
+        # 決定導覽列類型與目標值
+        curr_ctx = "main"; curr_val = None
+
+        if compact and spec.get("name"):
+            if context_info and context_info.get("type") == "category":
+                curr_ctx = "subcategory"; curr_val = f"{context_info['val']}/{spec['name']}"
+            else:
+                curr_ctx = "category"; curr_val = spec["name"]
+        elif context_info:
+            c_type = context_info.get("type")
+            if c_type == "subcategory":
+                curr_ctx = "subcategory"; curr_val = header_title if header_title and "/" in header_title else context_info.get("val")
+            elif c_type in ["tag", "place"]:
+                curr_ctx = "search"; curr_val = f"#{context_info['val']}" if c_type == "tag" else f"@{context_info['val']}"
+            else:
+                curr_ctx = c_type; curr_val = context_info.get("val")
+
+        bubble_footer = create_context_navigation_footer(curr_ctx, curr_val)
+
         for idx, item in enumerate(spec["items"]):
             item_id, title, _, is_done, place, _, _, sub_cats, tags = item
 
@@ -257,7 +294,7 @@ def create_todo_flex_message(items, group_by_sub_category=False, offset=0, base_
             "header": {"type": "box", "layout": "vertical", "backgroundColor": "#E67E22",
                 "contents": [{"type": "text", "text": spec["name"], "weight": "bold", "size": "xl", "color": "#ffffff", "align": "center"}]},
             "body": {"type": "box", "layout": "vertical", "contents": contents},
-            "footer": nav_footer
+            "footer": bubble_footer
         })
 
     # 若還有剩餘頁面，加入下一頁按鈕
@@ -272,13 +309,24 @@ def create_todo_flex_message(items, group_by_sub_category=False, offset=0, base_
 def create_item_detail_carousel(items, context_info=None, is_new=False, is_fail=False, is_deleted=False):
     """
     生成單一事項詳情 Carousel。
-    顏色規範：綠色(新增成功)、紅色(失敗/已刪除)、橘色(未完成)、藍色(已完成)
     """
     if not items and not is_fail: return None
     bubbles = []
 
-    # 決定導覽列
-    nav_footer = create_context_navigation_footer(context_info.get("type") if context_info else "main")
+    # 決定導覽列類型
+    ctx_type = "success" if (is_new or not is_deleted) else "deleted"
+    if is_fail: ctx_type = "main"
+
+    # 提取分類路徑作為導覽目標
+    target_path = None
+    if context_info:
+        target_path = context_info.get("val")
+    elif items:
+        # items[0]: (id, title, desc, done, place, completed_date, category_name, sub_cats, tags)
+        cat = items[0][6]; sub = items[0][7]
+        target_path = f"{cat}/{sub}" if sub else cat
+
+    bubble_footer = create_context_navigation_footer(ctx_type, target_path)
 
     # 如果是失敗狀態 (通常 items 為空)
     if is_fail:
@@ -287,7 +335,7 @@ def create_item_detail_carousel(items, context_info=None, is_new=False, is_fail=
             "header": {"type": "box", "layout": "vertical", "backgroundColor": "#E74C3C", "paddingAll": "12px",
                        "contents": [{"type": "text", "text": "操作失敗", "weight": "bold", "size": "lg", "color": "#ffffff", "align": "center"}]},
             "body": {"type": "box", "layout": "vertical", "contents": [{"type": "text", "text": "請檢查輸入格式或重試。", "align": "center", "size": "sm"}]},
-            "footer": nav_footer
+            "footer": bubble_footer
         })
     else:
         # LINE Carousel 限制最多 10 個 Bubble
@@ -334,11 +382,21 @@ def create_item_detail_carousel(items, context_info=None, is_new=False, is_fail=
 
             # 只有在非刪除狀態下才顯示操作按鈕
             if not is_deleted:
-                buttons = []
+                btn_contents = []
                 if not is_done:
-                    buttons.append({"type": "button", "style": "primary", "color": "#E67E22", "height": "sm", "action": {"type": "message", "label": "標記完成", "text": f"完成 {item_id}"}})
-                buttons.append({"type": "button", "style": "secondary", "height": "sm", "action": {"type": "message", "label": "刪除事項", "text": f"刪除 {item_id}"}})
-                body_contents.append({"type": "box", "layout": "vertical", "margin": "xl", "spacing": "sm", "contents": buttons})
+                    btn_contents.append({
+                        "type": "button", "style": "primary", "color": "#E67E22", "height": "sm",
+                        "action": {"type": "message", "label": "✅ 標記完成", "text": f"完成 {item_id}"}
+                    })
+
+                # 次要按鈕：編輯與刪除 (橫向排列)
+                btn_contents.append({
+                    "type": "box", "layout": "horizontal", "spacing": "sm", "contents": [
+                        {"type": "button", "style": "secondary", "height": "sm", "flex": 1, "action": {"type": "message", "label": "✏️ 編輯", "text": f"編輯 {item_id}"}},
+                        {"type": "button", "style": "secondary", "height": "sm", "flex": 1, "action": {"type": "message", "label": "🗑️ 刪除", "text": f"刪除 {item_id}"}}
+                    ]
+                })
+                body_contents.append({"type": "box", "layout": "vertical", "margin": "xl", "spacing": "sm", "contents": btn_contents})
             else:
                 # 刪除狀態下提供復原按鈕
                 body_contents.append({"type": "box", "layout": "vertical", "margin": "xl", "contents": [
@@ -349,7 +407,7 @@ def create_item_detail_carousel(items, context_info=None, is_new=False, is_fail=
                 "type": "bubble",
                 "header": header,
                 "body": {"type": "box", "layout": "vertical", "contents": body_contents},
-                "footer": nav_footer
+                "footer": bubble_footer
             })
 
         # 如果超過 10 筆，加入提示卡片
@@ -363,7 +421,7 @@ def create_item_detail_carousel(items, context_info=None, is_new=False, is_fail=
                         {"type": "text", "text": "已同步處理成功", "size": "xs", "color": "#aaaaaa", "align": "center"}
                     ]
                 },
-                "footer": nav_footer
+                "footer": bubble_footer
             })
     return {"type": "carousel", "contents": bubbles} if len(bubbles) > 1 else bubbles[0]
 
@@ -392,7 +450,7 @@ def create_category_management_flex(grouped_data, is_sub=False, offset=0, base_c
     bubbles = []
     for spec in display_specs:
         contents = []
-        nav_footer = create_context_navigation_footer("main")
+        bubble_footer = create_context_navigation_footer("mgmt_cat")
         if spec["type"] == "sub":
             for idx, item in enumerate(spec["items"]):
                 sub, count = item; path = f"{spec['main']}/{sub}"; display_name = f"{sub} ({count})" if count > 0 else sub
@@ -403,7 +461,7 @@ def create_category_management_flex(grouped_data, is_sub=False, offset=0, base_c
                 ]}
                 contents.append(row)
                 if idx < len(spec["items"]) - 1: contents.append({"type": "separator", "margin": "sm", "color": "#F5F5F5"})
-            nav_footer = create_context_navigation_footer("category", spec["main"])
+            bubble_footer = create_context_navigation_footer("mgmt_subcat", spec["main"])
         else:
             for idx, item in enumerate(spec["items"]):
                 m, count = item; display_name = f"{m} ({count})" if count > 0 else m
@@ -426,7 +484,7 @@ def create_category_management_flex(grouped_data, is_sub=False, offset=0, base_c
                 {"type": "text", "text": f" {spec['header']}", "weight": "bold", "size": "lg", "color": "#424242", "align": "center"}
             ]},
             "body": {"type": "box", "layout": "vertical", "spacing": "md", "contents": contents},
-            "footer": nav_footer
+            "footer": bubble_footer
         })
 
     if has_next:
@@ -442,7 +500,9 @@ def create_simple_list_flex(title, items, prefix="", base_command="list", contex
     生成簡單的標籤或地點選單。
     """
     if not items: return None
-    chunks = [items[x:x+20] for x in range(0, len(items), 20)]; bubbles = []; nav_footer = create_context_navigation_footer(context_type)
+    chunks = [items[x:x+20] for x in range(0, len(items), 20)]; bubbles = []
+    # 使用 search 情境，標籤/地點
+    bubble_footer = create_context_navigation_footer("search", "#" if prefix == "#" else "@")
     for idx, chunk in enumerate(chunks):
         rows = []
         for i in range(0, len(chunk), 2):
@@ -459,7 +519,7 @@ def create_simple_list_flex(title, items, prefix="", base_command="list", contex
             "type": "bubble",
             "header": {"type": "box", "layout": "vertical", "backgroundColor": "#F5F5F5", "contents": [{"type": "text", "text": f"{title} ({idx+1}/{len(chunks)})", "weight": "bold", "size": "lg", "color": "#424242", "align": "center"}]},
             "body": {"type": "box", "layout": "vertical", "spacing": "none", "contents": rows},
-            "footer": nav_footer
+            "footer": bubble_footer
         })
     return {"type": "carousel", "contents": bubbles} if len(bubbles) > 1 else bubbles[0]
 
@@ -545,11 +605,23 @@ def handle_stateful_message(user_id, state, text):
             return "請輸入事項內容 (可包含 #標籤 與 @地點)：", get_quick_reply(["取消"]), None
         elif stage == "awaiting_title":
             tags, place, clean_title = extract_metadata(t); data = state["data"]
-            new_id = db.add_item(user_id, data["category"], data["sub_categories"], clean_title, tags=tags, place=place)
+            cat = data["category"]; subs = data.get("sub_categories", [])
+            new_id = db.add_item(user_id, cat, subs, clean_title, tags=tags, place=place)
             db.clear_user_state(user_id)
             items = db.list_items(user_id, item_ids=[new_id])
-            flex = create_item_detail_carousel(items, is_new=True)
-            return f"已新增：{clean_title}", None, flex
+
+            # 使用完整路徑以確保 2x2 導覽列的新增按鈕精準
+            sub_path = f"{cat}/{subs[0]}" if subs else cat
+            flex = create_item_detail_carousel(items, context_info={"type": "category", "val": sub_path}, is_new=True)
+
+            # 生成智慧快捷按鈕
+            sub_val = subs[0] if subs else ""
+            qr_options = [
+                ("📜列出項目", f"list {cat}/{sub_val}" if sub_val else f"list {cat}"),
+                ("➕繼續新增", f"新增 {cat}/{sub_val}" if sub_val else f"新增 {cat}"),
+                ("📁主分類", "cat")
+            ]
+            return f"已新增：{clean_title}", get_quick_reply(qr_options), flex
 
     # 處理「編輯」流程
     elif action == "edit_item":
@@ -566,7 +638,9 @@ def handle_stateful_message(user_id, state, text):
             if db.edit_item(user_id, item_id, field, value):
                 db.clear_user_state(user_id)
                 items = db.list_items(user_id, item_ids=[item_id])
-                flex = create_item_detail_carousel(items, is_new=True)
+                # 取得該項目的分類以提供正確的導覽情境
+                cat = items[0][6] if items else "main"
+                flex = create_item_detail_carousel(items, context_info={"type": "category", "val": cat}, is_new=True)
                 return f"待辦事項 [{item_id}] 已更新。", None, flex
 
     # 處理「更名」流程
@@ -673,7 +747,15 @@ def callback():
                         reply_text = f"已批次新增 {added} 項。"
                         if added_ids:
                             items_data = db.list_items(user_id, item_ids=added_ids)
-                            flex_contents = create_item_detail_carousel(items_data, is_new=True)
+                            flex_contents = create_item_detail_carousel(items_data, context_info={"type": "category", "val": cat}, is_new=True)
+
+                            # 生成智慧快捷按鈕
+                            qr_options = [
+                                ("📜列出項目", f"list {cat}"),
+                                ("➕繼續新增", f"新增 {cat}/{subs[0]}" if subs else f"新增 {cat}"),
+                                ("📁主分類", "cat")
+                            ]
+                            quick_reply = get_quick_reply(qr_options)
                     except: reply_text = "格式錯誤。"
                 elif "+" in t and len(t.split("+")) >= 3: # 快捷單筆新增語法
                     try:
@@ -686,7 +768,16 @@ def callback():
                         new_id = db.add_item(user_id, cat, subs, clean_t, tags=tags, place=place)
                         reply_text = f"已新增：{clean_t}"
                         items_data = db.list_items(user_id, item_ids=[new_id])
-                        flex_contents = create_item_detail_carousel(items_data, is_new=True)
+                        sub_path = f"{cat}/{subs[0]}" if subs else cat
+                        flex_contents = create_item_detail_carousel(items_data, context_info={"type": "category", "val": sub_path}, is_new=True)
+
+                        # 生成智慧快捷按鈕
+                        qr_options = [
+                            ("📜列出項目", f"list {cat}"),
+                            ("➕繼續新增", f"新增 {cat}/{subs[0]}" if subs else f"新增 {cat}"),
+                            ("📁主分類", "cat")
+                        ]
+                        quick_reply = get_quick_reply(qr_options)
                     except: reply_text = "格式錯誤。"
                 else:
                     # 一般指令判斷
@@ -765,6 +856,7 @@ def callback():
                             # 修正：將 [(name, count), ...] 轉換為 {name: count} 以供 Flex 生成器使用
                             grouped = {c[0]: c[1] for c in cats}
                             flex_contents = create_category_management_flex(grouped, is_sub=False, offset=offset, base_command="cat"); reply_text = "主分類管理"
+                            quick_reply = get_quick_reply([("➕新增主分類", "新增"), ("🏷️標籤清單", "tags"), ("📍地點清單", "places")])
                         else: reply_text = "目前沒有分類。"
                     elif t_lower.startswith("sub_categories") or t_lower.startswith("subcat"):
                         # 子分類管理與分頁處理
@@ -777,6 +869,7 @@ def callback():
                                 if c not in grouped: grouped[c] = []
                                 grouped[c].append((s, count))
                             flex_contents = create_category_management_flex(grouped, is_sub=True, offset=offset, base_command=clean_t); reply_text = f"子分類列表"
+                            quick_reply = get_quick_reply([("📁主分類", "cat"), ("➕新增項目", "新增"), ("🏷️標籤清單", "tags")])
                         else: reply_text = "找不到子分類。"
                     elif t_lower.startswith("rename_cat "):
                         # 處理主分類更名
@@ -830,6 +923,20 @@ def callback():
                             is_compact = True if (cat and not sub and not tag and not place) else False
                             flex_contents = create_todo_flex_message(items, bool(cat), offset, clean_cmd, is_compact, header or cat, context_info=ctx)
                             reply_text = f"{header or cat or '您的'} 清單{'摘要' if is_compact else ''}"
+
+                            # 生成智慧快捷按鈕
+                            qr_opts = []
+                            if sub:
+                                qr_opts = [("➕新增至此", f"新增 {cat}/{sub}"), (f"⬅️回 {cat}", f"list {cat}"), ("📁主分類", "cat")]
+                            elif cat:
+                                qr_opts = [("➕新增至此", f"新增 {cat}"), ("📁主分類", "cat"), ("🏷️標籤清單", "tags")]
+                            elif tag:
+                                qr_opts = [("➕新增項目", "新增"), ("🏷️標籤清單", "tags"), ("📁主分類", "cat")]
+                            elif place:
+                                qr_opts = [("➕新增項目", "新增"), ("📍地點清單", "places"), ("📁主分類", "cat")]
+                            else:
+                                qr_opts = [("➕新增項目", "新增"), ("📁主分類", "cat"), ("🏷️標籤", "tags"), ("📍地點", "places")]
+                            quick_reply = get_quick_reply(qr_opts)
                         else: reply_text = "沒有內容。"
                     elif t_lower == "help":
                         flex_contents = create_help_flex_message(); reply_text = "指令說明"
@@ -858,3 +965,8 @@ if __name__ == "__main__":
         except: pass
     # 啟動 Flask Server
     app.run(host="0.0.0.0", port=port, debug=True, use_reloader=False)
+
+
+
+
+
