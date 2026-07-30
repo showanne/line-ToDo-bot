@@ -2,7 +2,10 @@
 
 這是一個基於 Python Flask 開發的高進階 LINE 聊天機器人，旨在提供最直覺、美觀的待辦事項管理體驗。本專案整合了 LINE Flex Message 技術與智慧指令解析，將複雜的任務與類別管理簡化為指尖的點擊操作。
 
-**✨ 本次升級：全方位交互優化，打造流暢待辦體驗！**
+**✨ 本次升級：看板互動式 CRUD 與多使用者管理重磅上線！**
+- 數據看板解鎖完整編輯與新增能力（彈窗新增/編輯、標記完成/未完成、軟刪除與復原）。
+- 支援多使用者切換（User Switcher），輕鬆檢視及管理不同 LINE 使用者的待辦事項。
+- 開放標準 RESTful REST API，提供端點進行待辦事項的增刪改查。
 
 ---
 
@@ -67,10 +70,12 @@
 
 ### 5. 數據看板 (Visualization Dashboard)
 
-- **現代化 Web 介面**：提供 `/dashboard` 專屬網頁，採用響應式卡片設計，適合在大螢幕上管理任務。
-- **維度導覽側邊欄**：左側自動彙總所有主分類、標籤與地點，並即時顯示未完成事項的數量。
-- **動態過濾**：點擊側邊欄項目即可即時篩選右側事項清單。
-- **自動同步**：看板具備自動刷新機制（每 30 秒），確保網頁內容與 LINE Bot 資料即時同步。
+- **現代化 Web 介面**：提供 `/dashboard` 專屬網頁，採用響應式賽博朋克風格卡片設計，適合在大螢幕上管理任務。
+- **多使用者切換 (User Switcher)**：頂部選單可切換檢視特定 LINE User ID 或檢視全域事項。
+- **互動式 CRUD 彈窗**：點擊「新增單位」或卡片上的「編輯」按鈕，可直接透過視窗修改標題、主分類、子分類、標籤、地點與完成狀態。
+- **列內快速操作 (Inline Actions)**：事項表格右側提供一鍵完成/取消完成、編輯彈窗開啟、刪除與一鍵復原按鈕。
+- **維度導覽側邊欄**：左側自動彙總所有主分類、標籤與地點，並即時顯示未完成事項的數量與篩選狀態。
+- **動態過濾與自動同步**：點擊側邊欄即可即時過濾事項；看板具備 30 秒自動刷新機制，確保網頁與 LINE Bot 資料無縫同步。
 
 ---
 
@@ -238,15 +243,23 @@
 - **URL**: `GET /dashboard`
 - **說明**: 進入現代化 Web 看板，即時查看分類統計與事項卡片。
 
-### 📡 JSON 資料 API
+### 📡 RESTful API 與 JSON 資料端點
 
-- **所有資料**: `GET /api/data` - 回傳結構化的 JSON，包含分類、標籤與完整事項。
-- **維度統計**:
+- **使用者清單**: `GET /api/users` - 取得系統中所有有記錄的 `user_id` 列表。
+- **所有資料**: `GET /api/data` - 回傳結構化的 JSON（支援 `?user_id=xxx` 參數進行使用者過濾）。
+- **事項 CRUD 操作 API**:
+  - `POST /api/items/add` - 新增待辦事項 (`user_id`, `title`, `category`, `sub_categories`, `tags`, `place`)。
+  - `POST /api/items/edit` - 編輯待辦事項 (`id`, `user_id`, `title`, `category`, `sub_categories`, `tags`, `place`, `done`)。
+  - `POST /api/items/delete` - 軟刪除指定 ID 事項 (`user_id`, `ids`)。
+  - `POST /api/items/restore` - 復原指定 ID 事項 (`user_id`, `ids`)。
+  - `POST /api/items/complete` - 批次標記事項為已完成 (`user_id`, `ids`)。
+  - `POST /api/items/incomplete` - 批次標記事項為未完成 (`user_id`, `ids`)。
+- **維度統計 API**:
   - `GET /api/categories` - 主分類統計清單。
   - `GET /api/sub-categories` - 子分類統計清單 (可帶 `?category=xxx` 過濾)。
   - `GET /api/tags` - 標籤統計清單。
   - `GET /api/places` - 地點統計清單。
-  - _所有端點皆支援 `?user_id=xxx` 參數來查詢特定使用者。_
+  - _以上維度端點皆支援 `?user_id=xxx` 參數來查詢特定使用者。_
 
 ### 💾 資料匯出與工具
 

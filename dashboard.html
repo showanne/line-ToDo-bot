@@ -243,15 +243,32 @@
                 </div>
             </div>
             
-            <div class="flex items-center gap-12">
+            <div class="flex items-center gap-8">
+                <!-- User Selector -->
+                <div class="flex flex-col border-r border-white/5 pr-8">
+                    <span class="text-[10px] font-header font-bold text-slate-500 uppercase tracking-widest mb-1">USER_ID / 帳號</span>
+                    <div class="flex items-center gap-2">
+                        <select id="user-select" onchange="switchUser(this.value)" class="bg-black/60 border border-white/10 rounded px-3 py-1 text-xs text-white focus:outline-none focus:border-cyber-accent">
+                            <option value="default_user">default_user</option>
+                        </select>
+                        <button onclick="promptNewUser()" class="p-1 rounded bg-white/5 border border-white/10 hover:border-cyber-accent text-slate-400 hover:text-white transition-all" title="Add User / 手動輸入">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
+                        </button>
+                    </div>
+                </div>
+
                 <!-- Status Tabs -->
-                <div class="flex items-center gap-6 border-r border-white/5 pr-10">
+                <div class="flex items-center gap-6 border-r border-white/5 pr-8">
                     <button onclick="setStatusFilter('active')" id="status-active" class="status-tab active font-header text-xs font-bold uppercase tracking-widest py-2">Active</button>
                     <button onclick="setStatusFilter('done')" id="status-done" class="status-tab font-header text-xs font-bold uppercase tracking-widest py-2">Archived</button>
                     <button onclick="setStatusFilter('deleted')" id="status-deleted" class="status-tab deleted font-header text-xs font-bold uppercase tracking-widest py-2">Deleted</button>
                 </div>
 
-                <div class="flex items-center gap-8">
+                <div class="flex items-center gap-6">
+                    <button onclick="openAddModal()" class="flex items-center gap-2 bg-cyber-accent hover:bg-cyber-accent/80 text-white font-header text-xs font-bold px-4 py-2 rounded-lg transition-all shadow-lg shadow-cyber-accent/10 border border-cyber-accent/20">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                        ADD_UNIT
+                    </button>
                     <div class="text-right">
                         <div class="text-[10px] font-header text-slate-500 uppercase tracking-widest mb-1">Total_Units</div>
                         <div id="pending-count" class="text-2xl font-header font-bold text-cyber-accent">0</div>
@@ -275,19 +292,128 @@
         </div>
     </main>
 
+    <!-- Task Modal (Add/Edit) -->
+    <div id="task-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm hidden">
+        <div class="bg-cyber-darker border border-white/10 rounded-xl p-8 max-w-md w-full shadow-2xl relative">
+            <!-- decoration line -->
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyber-accent via-cyber-neon to-cyber-danger"></div>
+            
+            <h3 id="modal-title" class="font-header font-bold text-cyber-accent text-lg uppercase tracking-wider mb-6">Create New Unit</h3>
+            <button onclick="closeModal()" class="absolute top-6 right-6 text-slate-500 hover:text-white transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+            
+            <form id="task-form" onsubmit="saveTask(event)" class="space-y-5">
+                <input type="hidden" id="task-id">
+                
+                <div class="flex flex-col gap-1.5">
+                    <label class="text-[10px] font-header text-slate-500 uppercase tracking-wider">Unit Designation (Task Title) *</label>
+                    <input type="text" id="task-title" required placeholder="Enter task name" 
+                           class="bg-black/40 border border-white/10 rounded-md px-4 py-2.5 text-sm text-white focus:outline-none focus:border-cyber-accent transition-all">
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="flex flex-col gap-1.5">
+                        <label class="text-[10px] font-header text-slate-500 uppercase tracking-wider">Sector (Category) *</label>
+                        <input type="text" id="task-category" required placeholder="e.g. Work" 
+                               class="bg-black/40 border border-white/10 rounded-md px-4 py-2.5 text-sm text-white focus:outline-none focus:border-cyber-accent transition-all">
+                    </div>
+                    
+                    <div class="flex flex-col gap-1.5">
+                        <label class="text-[10px] font-header text-slate-500 uppercase tracking-wider">Sub-Sector (Subcategory)</label>
+                        <input type="text" id="task-subcategory" placeholder="e.g. Meeting" 
+                               class="bg-black/40 border border-white/10 rounded-md px-4 py-2.5 text-sm text-white focus:outline-none focus:border-cyber-accent transition-all">
+                    </div>
+                </div>
+                
+                <div class="flex flex-col gap-1.5">
+                    <label class="text-[10px] font-header text-slate-500 uppercase tracking-wider">Signal Tags (Comma separated)</label>
+                    <input type="text" id="task-tags" placeholder="e.g. urgent, project-a" 
+                           class="bg-black/40 border border-white/10 rounded-md px-4 py-2.5 text-sm text-white focus:outline-none focus:border-cyber-accent transition-all">
+                </div>
+                
+                <div class="flex flex-col gap-1.5">
+                    <label class="text-[10px] font-header text-slate-500 uppercase tracking-wider">Coordinates (Location)</label>
+                    <input type="text" id="task-place" placeholder="e.g. Office" 
+                           class="bg-black/40 border border-white/10 rounded-md px-4 py-2.5 text-sm text-white focus:outline-none focus:border-cyber-accent transition-all">
+                </div>
+
+                <div id="modal-status-group" class="flex items-center gap-2 pt-2 hidden">
+                    <input type="checkbox" id="task-done" class="rounded border-white/10 bg-black/40 text-cyber-accent focus:ring-0 focus:ring-offset-0">
+                    <label for="task-done" class="text-[10px] font-header text-slate-400 uppercase tracking-wider cursor-pointer">Mark as Done / 已完成</label>
+                </div>
+                
+                <div class="flex justify-end gap-3 pt-4 border-t border-white/5">
+                    <button type="button" onclick="closeModal()" 
+                            class="bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white font-header text-xs font-bold px-5 py-2.5 rounded transition-all">
+                        CANCEL
+                    </button>
+                    <button type="submit" 
+                            class="bg-cyber-accent hover:bg-cyber-accent/80 text-white font-header text-xs font-bold px-6 py-2.5 rounded transition-all shadow-lg shadow-cyber-accent/20">
+                        EXECUTE
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
         let allData = { items: [], categories: [], tags: [], places: [], subCategories: {} };
         let filters = { category: null, subcategory: null, tag: null, place: null, status: 'active' };
         let viewMode = localStorage.getItem('viewMode') || 'card';
+        let currentUser = localStorage.getItem('currentUser') || 'default_user';
+
+        async function loadUsers() {
+            try {
+                const res = await fetch('/api/users');
+                const users = await res.json();
+                const select = document.getElementById('user-select');
+                select.innerHTML = '';
+                
+                const allUsers = new Set(users);
+                if (currentUser) allUsers.add(currentUser);
+                
+                Array.from(allUsers).sort().forEach(user => {
+                    const opt = document.createElement('option');
+                    opt.value = user;
+                    opt.textContent = user;
+                    if (user === currentUser) opt.selected = true;
+                    select.appendChild(opt);
+                });
+            } catch (err) {
+                console.error('Users loading failure:', err);
+            }
+        }
+
+        function switchUser(uid) {
+            currentUser = uid;
+            localStorage.setItem('currentUser', uid);
+            filters.category = null;
+            filters.subcategory = null;
+            filters.tag = null;
+            filters.place = null;
+            loadData();
+        }
+
+        function promptNewUser() {
+            const uid = prompt("請輸入 LINE User ID (例如: U12345...):");
+            if (uid) {
+                const cleanUid = uid.trim();
+                if (cleanUid) {
+                    switchUser(cleanUid);
+                    loadUsers();
+                }
+            }
+        }
 
         async function loadData() {
             try {
                 const [itemsRes, catsRes, tagsRes, placesRes, subCatsRes] = await Promise.all([
-                    fetch('/api/data'),
-                    fetch('/api/categories'),
-                    fetch('/api/tags'),
-                    fetch('/api/places'),
-                    fetch('/api/sub-categories')
+                    fetch(`/api/data?user_id=${encodeURIComponent(currentUser)}`),
+                    fetch(`/api/categories?user_id=${encodeURIComponent(currentUser)}`),
+                    fetch(`/api/tags?user_id=${encodeURIComponent(currentUser)}`),
+                    fetch(`/api/places?user_id=${encodeURIComponent(currentUser)}`),
+                    fetch(`/api/sub-categories?user_id=${encodeURIComponent(currentUser)}`)
                 ]);
 
                 allData.items = (await itemsRes.json()).items || [];
@@ -368,7 +494,6 @@
             const availableTags = new Set();
             const availablePlaces = new Set();
             
-            // Filters based on current Category/Subcategory and Status
             const baseItems = allData.items.filter(i => {
                 const catMatch = !filters.category || i.category_name === filters.category;
                 const subMatch = !filters.subcategory || i.sub_categories.includes(filters.subcategory);
@@ -417,7 +542,6 @@
             let filtered = allData.items;
             let titles = [];
             
-            // Status Filter
             if (filters.status === 'active') filtered = filtered.filter(i => !i.done && !i.is_deleted);
             else if (filters.status === 'done') filtered = filtered.filter(i => i.done && !i.is_deleted);
             else if (filters.status === 'deleted') filtered = filtered.filter(i => i.is_deleted);
@@ -455,7 +579,6 @@
                 const card = document.createElement('div');
                 const isDeleted = item.is_deleted;
                 const accent = isDeleted ? 'cyber-danger' : 'cyber-accent';
-                const accentHex = isDeleted ? '#ef4444' : '#E67E22';
                 
                 card.className = `group relative p-6 rounded-xl border border-white/5 layer-2 card-zoom flex flex-col justify-between ${item.done ? 'opacity-50 grayscale' : ''}`;
                 let tags = item.tags ? item.tags.map(t => `<span class="text-[10px] text-cyber-neon border border-cyber-neon/20 bg-cyber-neon/5 px-2 py-0.5 rounded">#${t}</span>`).join('') : '';
@@ -463,9 +586,9 @@
                 
                 card.innerHTML = `
                     <div>
-                        <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center justify-between mb-4 pr-16">
                             <span class="font-header text-[10px] font-bold text-${accent} uppercase tracking-widest bg-${accent}/10 px-2 py-0.5 rounded border border-${accent}/20">
-                                ${item.category_name} ${item.sub_categories ? '> ' + item.sub_categories.join('/') : ''}
+                                ${item.category_name} ${item.sub_categories && item.sub_categories.length ? '> ' + item.sub_categories.join('/') : ''}
                             </span>
                             <span class="font-header text-[10px] text-slate-600">ID_${item.id.toString().padStart(4, '0')}</span>
                         </div>
@@ -481,7 +604,25 @@
                             </span>
                         </div>
                     </div>
-                    <div class="absolute inset-0 border border-${accent}/0 group-hover:border-${accent}/20 rounded-xl pointer-events-none transition-all duration-500"></div>`;
+                    <!-- Action Overlay -->
+                    <div class="absolute top-4 right-4 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-all duration-300">
+                        <button onclick="event.stopPropagation(); openEditModal(${item.id})" class="p-1.5 rounded bg-cyber-dark border border-white/10 hover:border-cyber-accent text-slate-400 hover:text-cyber-accent transition-all" title="Edit">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                        </button>
+                        ${isDeleted ? `
+                        <button onclick="event.stopPropagation(); restoreItems([${item.id}])" class="p-1.5 rounded bg-cyber-dark border border-white/10 hover:border-green-500 text-slate-400 hover:text-green-500 transition-all" title="Restore">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H17"></path></svg>
+                        </button>
+                        ` : `
+                        <button onclick="event.stopPropagation(); toggleComplete(${item.id}, ${item.done})" class="p-1.5 rounded bg-cyber-dark border border-white/10 hover:border-cyber-neon text-slate-400 hover:text-cyber-neon transition-all" title="${item.done ? 'Mark Active' : 'Mark Completed'}">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                        </button>
+                        <button onclick="event.stopPropagation(); deleteItems([${item.id}])" class="p-1.5 rounded bg-cyber-dark border border-white/10 hover:border-cyber-danger text-slate-400 hover:text-cyber-danger transition-all" title="Delete">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>
+                        `}
+                    </div>
+                    <div class="absolute inset-0 border border-white/0 group-hover:border-white/5 rounded-xl pointer-events-none transition-all duration-500"></div>`;
                 grid.appendChild(card);
             });
             container.appendChild(grid);
@@ -492,26 +633,193 @@
             wrapper.className = "overflow-x-auto rounded-xl border border-white/5 layer-2";
             const table = document.createElement('table');
             table.className = "w-full tactical-table text-left border-collapse";
-            table.innerHTML = `<thead><tr><th class="p-4">ID</th><th class="p-4">Task Name</th><th class="p-4">Path</th><th class="p-4">Tags</th><th class="p-4">Location</th><th class="p-4 text-center">Status</th></tr></thead><tbody></tbody>`;
+            table.innerHTML = `<thead><tr><th class="p-4">ID</th><th class="p-4">Task Name</th><th class="p-4">Path</th><th class="p-4">Tags</th><th class="p-4">Location</th><th class="p-4 text-center">Status</th><th class="p-4 text-center">Actions</th></tr></thead><tbody></tbody>`;
             const tbody = table.querySelector('tbody');
             items.forEach(item => {
                 const tr = document.createElement('tr');
                 const isDeleted = item.is_deleted;
                 tr.className = item.done ? 'opacity-50 grayscale' : (isDeleted ? 'text-cyber-danger/80' : '');
+                
+                const actionsHtml = `
+                    <div class="flex items-center justify-center gap-2">
+                        <button onclick="event.stopPropagation(); openEditModal(${item.id})" class="p-1 rounded bg-black/40 border border-white/5 hover:border-cyber-accent text-slate-400 hover:text-cyber-accent transition-all" title="Edit">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                        </button>
+                        ${isDeleted ? `
+                        <button onclick="event.stopPropagation(); restoreItems([${item.id}])" class="p-1 rounded bg-black/40 border border-white/5 hover:border-green-500 text-slate-400 hover:text-green-500 transition-all" title="Restore">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H17"></path></svg>
+                        </button>
+                        ` : `
+                        <button onclick="event.stopPropagation(); toggleComplete(${item.id}, ${item.done})" class="p-1 rounded bg-black/40 border border-white/5 hover:border-cyber-neon text-slate-400 hover:text-cyber-neon transition-all" title="${item.done ? 'Mark Active' : 'Mark Completed'}">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                        </button>
+                        <button onclick="event.stopPropagation(); deleteItems([${item.id}])" class="p-1 rounded bg-black/40 border border-white/5 hover:border-cyber-danger text-slate-400 hover:text-cyber-danger transition-all" title="Delete">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>
+                        `}
+                    </div>
+                `;
+                
                 tr.innerHTML = `
                     <td class="font-header text-xs text-slate-500">ID_${item.id.toString().padStart(4, '0')}</td>
                     <td class="font-bold text-sm ${isDeleted ? 'line-through opacity-50' : ''}">${item.title}</td>
-                    <td class="text-xs text-slate-400 font-header uppercase">${item.category_name} <span class="opacity-30">/</span> ${item.sub_categories.join(', ')}</td>
-                    <td><div class="flex gap-1">${item.tags.map(t => `<span class="text-[9px] text-cyber-neon border border-cyber-neon/20 px-1.5 py-0.5 rounded">#${t}</span>`).join('')}</div></td>
+                    <td class="text-xs text-slate-400 font-header uppercase">${item.category_name} <span class="opacity-30">/</span> ${item.sub_categories ? item.sub_categories.join(', ') : ''}</td>
+                    <td><div class="flex gap-1">${item.tags ? item.tags.map(t => `<span class="text-[9px] text-cyber-neon border border-cyber-neon/20 px-1.5 py-0.5 rounded">#${t}</span>`).join('') : ''}</div></td>
                     <td class="text-xs text-slate-500 font-header">${item.place || '---'}</td>
-                    <td class="text-center"><span class="inline-block w-2 h-2 rounded-full ${isDeleted ? 'bg-cyber-danger' : (item.done ? 'bg-slate-600' : 'bg-cyber-accent')} status-dot" style="color: ${isDeleted ? '#ef4444' : (item.done ? '#64748b' : '#E67E22')}"></span></td>`;
+                    <td class="text-center"><span class="inline-block w-2 h-2 rounded-full ${isDeleted ? 'bg-cyber-danger' : (item.done ? 'bg-slate-600' : 'bg-cyber-accent')} status-dot" style="color: ${isDeleted ? '#ef4444' : (item.done ? '#64748b' : '#E67E22')}"></span></td>
+                    <td class="text-center">${actionsHtml}</td>`;
                 tbody.appendChild(tr);
             });
             wrapper.appendChild(table);
             container.appendChild(wrapper);
         }
 
-        loadData();
+        function openAddModal() {
+            document.getElementById('modal-title').textContent = "Create New Unit";
+            document.getElementById('task-id').value = "";
+            document.getElementById('task-title').value = "";
+            document.getElementById('task-category').value = filters.category || "";
+            document.getElementById('task-subcategory').value = filters.subcategory || "";
+            document.getElementById('task-tags').value = filters.tag ? filters.tag : "";
+            document.getElementById('task-place').value = filters.place || "";
+            document.getElementById('modal-status-group').classList.add('hidden');
+            document.getElementById('task-modal').classList.remove('hidden');
+        }
+
+        function openEditModal(itemId) {
+            const item = allData.items.find(i => i.id === itemId);
+            if (!item) return;
+            
+            document.getElementById('modal-title').textContent = `Edit Unit ID_${itemId.toString().padStart(4, '0')}`;
+            document.getElementById('task-id').value = item.id;
+            document.getElementById('task-title').value = item.title;
+            document.getElementById('task-category').value = item.category_name || "";
+            document.getElementById('task-subcategory').value = item.sub_categories ? item.sub_categories.join(', ') : "";
+            document.getElementById('task-tags').value = item.tags ? item.tags.join(', ') : "";
+            document.getElementById('task-place').value = item.place || "";
+            
+            document.getElementById('modal-status-group').classList.remove('hidden');
+            document.getElementById('task-done').checked = item.done === 1;
+            
+            document.getElementById('task-modal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('task-modal').classList.add('hidden');
+        }
+
+        async function saveTask(event) {
+            event.preventDefault();
+            const id = document.getElementById('task-id').value;
+            const title = document.getElementById('task-title').value;
+            const category = document.getElementById('task-category').value;
+            const subCategoryStr = document.getElementById('task-subcategory').value;
+            const tagsStr = document.getElementById('task-tags').value;
+            const place = document.getElementById('task-place').value;
+            const done = id ? (document.getElementById('task-done').checked ? 1 : 0) : 0;
+
+            const url = id ? '/api/items/edit' : '/api/items/add';
+            const payload = {
+                user_id: currentUser,
+                title,
+                category,
+                sub_categories: subCategoryStr,
+                tags: tagsStr,
+                place
+            };
+            if (id) {
+                payload.id = parseInt(id);
+                payload.done = done;
+            }
+
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    closeModal();
+                    loadData();
+                    loadUsers();
+                } else {
+                    alert('Error: ' + (result.error || 'Unknown error'));
+                }
+            } catch (err) {
+                console.error('Save task failure:', err);
+                alert('Save failed: ' + err.message);
+            }
+        }
+
+        async function toggleComplete(id, currentDone) {
+            const url = currentDone ? '/api/items/incomplete' : '/api/items/complete';
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: currentUser,
+                        ids: [id]
+                    })
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    loadData();
+                } else {
+                    alert('Error: ' + (result.error || 'Unknown error'));
+                }
+            } catch (err) {
+                console.error('Toggle complete failure:', err);
+            }
+        }
+
+        async function deleteItems(ids) {
+            if (!confirm('Are you sure you want to delete these units?')) return;
+            try {
+                const res = await fetch('/api/items/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: currentUser,
+                        ids: ids
+                    })
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    loadData();
+                } else {
+                    alert('Error: ' + (result.error || 'Unknown error'));
+                }
+            } catch (err) {
+                console.error('Delete failure:', err);
+            }
+        }
+
+        async function restoreItems(ids) {
+            try {
+                const res = await fetch('/api/items/restore', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: currentUser,
+                        ids: ids
+                    })
+                });
+                const result = await res.json();
+                if (res.ok) {
+                    loadData();
+                } else {
+                    alert('Error: ' + (result.error || 'Unknown error'));
+                }
+            } catch (err) {
+                console.error('Restore failure:', err);
+            }
+        }
+
+        loadUsers().then(() => {
+            loadData();
+        });
         setInterval(loadData, 30000);
     </script>
 </body>

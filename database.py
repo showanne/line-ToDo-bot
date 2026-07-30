@@ -150,7 +150,8 @@ def add_item(user_id, category_name, sub_category_names, title, tags=None, place
             sub_category_names = [s.strip() for s in sub_category_names.split(",") if s.strip()]
         sub_cats = [get_or_create(session, SubCategory, category_id=cat.id, name=sc) for sc in sub_category_names]
         tag_objs = [get_or_create(session, Tag, user_id=user_id, name=t) for t in (tags or [])]
-        new_item = Item(user_id=user_id, category_id=cat.id, title=title, place=place, done=0, sub_categories=sub_cats, tags=tag_objs)
+        sub_cat_id = sub_cats[0].id if sub_cats else None
+        new_item = Item(user_id=user_id, category_id=cat.id, sub_category_id=sub_cat_id, title=title, place=place, done=0, sub_categories=sub_cats, tags=tag_objs)
         session.add(new_item); session.commit()
         return new_item.id
     except Exception as e: session.rollback(); raise e
@@ -182,6 +183,54 @@ def mark_item_as_done(user_id, item_ids):
         session.commit(); return len(items)
     except: session.rollback(); return 0
     finally: session.close()
+
+def mark_item_as_undone(user_id, item_ids):
+    session = db_session()
+    try:
+        items = session.query(Item).filter(Item.id.in_(item_ids), Item.user_id == user_id, Item.is_deleted == 0).all()
+        for i in items: i.done = 0; i.completed_date = None
+        session.commit(); return len(items)
+    except: session.rollback(); return 0
+    finally: session.close()
+
+def update_item(user_id, item_id, category_name, sub_category_names, title, tags=None, place=None, done=None):
+    session = db_session()
+    try:
+        i = session.query(Item).filter(Item.id == item_id, Item.user_id == user_id).first()
+        if not i: return False
+        
+        # 1. 更新主分類
+        cat = get_or_create(session, Category, user_id=user_id, name=category_name)
+        i.category_id = cat.id
+        
+        # 2. 更新子分類
+        if isinstance(sub_category_names, str):
+            sub_category_names = [s.strip() for s in sub_category_names.split(",") if s.strip()]
+        sub_cats = [get_or_create(session, SubCategory, category_id=cat.id, name=sc) for sc in sub_category_names]
+        i.sub_categories = sub_cats
+        i.sub_category_id = sub_cats[0].id if sub_cats else None
+        
+        # 3. 更新標籤
+        tag_objs = [get_or_create(session, Tag, user_id=user_id, name=t) for t in (tags or [])]
+        i.tags = tag_objs
+        
+        # 4. 更新基本屬性
+        i.title = title
+        i.place = place
+        if done is not None:
+            i.done = int(done)
+            if i.done == 1 and not i.completed_date:
+                i.completed_date = datetime.now().isoformat()
+            elif i.done == 0:
+                i.completed_date = None
+                
+        session.commit()
+        return True
+    except Exception as e:
+        session.rollback()
+        raise e
+    finally:
+        session.close()
 
 def get_item(user_id, item_id):
     session = db_session()
@@ -345,16 +394,22 @@ def export_data_as_sql():
     finally:
         session.close()
 
-def get_all_data_json():
+def get_all_data_json(user_id=None):
     """
     取得所有資料並轉換為適合 HTML/JSON 使用的結構。
     """
     session = db_session()
     try:
-        categories = session.query(Category).all()
-        sub_categories = session.query(SubCategory).all()
-        tags = session.query(Tag).all()
-        items = session.query(Item).all()
+        if user_id:
+            categories = session.query(Category).filter(Category.user_id == user_id).all()
+            sub_categories = session.query(SubCategory).join(Category).filter(Category.user_id == user_id).all()
+            tags = session.query(Tag).filter(Tag.user_id == user_id).all()
+            items = session.query(Item).filter(Item.user_id == user_id).all()
+        else:
+            categories = session.query(Category).all()
+            sub_categories = session.query(SubCategory).all()
+            tags = session.query(Tag).all()
+            items = session.query(Item).all()
 
         return {
             "categories": [{"id": c.id, "user_id": c.user_id, "name": c.name} for c in categories],
@@ -377,6 +432,22 @@ def get_all_data_json():
                 } for i in items
             ]
         }
+    finally:
+        session.close()
+
+def get_all_users():
+    """
+    取得所有有記錄的 user_id 清單。
+    """
+    session = db_session()
+    try:
+        user_ids = session.query(Item.user_id).distinct().all()
+        uids = {u[0] for u in user_ids if u[0]}
+        cat_user_ids = session.query(Category.user_id).distinct().all()
+        for u in cat_user_ids:
+            if u[0]:
+                uids.add(u[0])
+        return sorted(list(uids))
     finally:
         session.close()
 
