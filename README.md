@@ -79,7 +79,12 @@
 
 ---
 
-## 🛠️ 技術 (Tech Stack)
+## � 模組文件
+
+- [modules/todo/README.md](modules/todo/README.md)：待辦模組說明、指令、API 與設計重點。
+- [modules/investment/README.md](modules/investment/README.md)：投資庫存狀態記錄模組說明、指令、API 與資料模型。
+
+## �🛠️ 技術 (Tech Stack)
 
 - **Backend**: Python 3.9+, Flask
 - **Messaging**: LINE Messaging API (line-bot-sdk v3)
