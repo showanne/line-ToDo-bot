@@ -2,6 +2,7 @@
 from linebot.v3.messaging.models import ReplyMessageRequest, TextMessage as V3TextMessage
 from core import database as core_db
 from modules.todo.handlers import TodoModule
+from modules.investment.handlers import InvestmentModule
 
 class MessageRouter:
     """
@@ -10,13 +11,17 @@ class MessageRouter:
     """
     def __init__(self):
         self.modules = {
-            "todo": TodoModule()
+            "todo": TodoModule(),
+            "investment": InvestmentModule()
         }
         # 模組切換指令映射
         self.mode_switches = {
             "@待辦": "todo",
             "切換模式:待辦": "todo",
             "mode:todo": "todo",
+            "@投資": "investment",
+            "切換模式:投資": "investment",
+            "mode:investment": "investment",
             "@看房": "house_viewing",
             "切換模式:看房": "house_viewing",
             "mode:house_viewing": "house_viewing",
@@ -38,6 +43,7 @@ class MessageRouter:
 
             mode_names = {
                 "todo": "📝 待辦清單",
+                "investment": "📈 投資狀態記錄",
                 "house_viewing": "🏠 看房預約助手",
                 "calendar": "📅 日曆事件機器人"
             }

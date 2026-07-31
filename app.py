@@ -19,6 +19,7 @@ from core.database import init_db
 from core.scheduler import start_scheduler
 from core.router import MessageRouter
 from modules.todo.api import todo_api
+from modules.investment.api import investment_api
 
 # 1. 初始化 Flask 應用與數據庫
 app = Flask(__name__)
@@ -29,6 +30,7 @@ start_scheduler()
 
 # 2. 註冊子模組與 Blueprint
 app.register_blueprint(todo_api)
+app.register_blueprint(investment_api)
 
 # 3. 初始化訊息分發路由器 (Door)
 router = MessageRouter()
