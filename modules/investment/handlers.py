@@ -9,7 +9,8 @@ from modules.investment.flex_templates import (
     get_quick_reply,
     create_portfolio_summary_flex,
     create_investment_list_flex,
-    create_investment_help_flex
+    create_investment_help_flex,
+    create_investment_detail_flex
 )
 
 class InvestmentModule(BaseModule):
@@ -80,18 +81,20 @@ class InvestmentModule(BaseModule):
             # 解析數量與價格 (買入 1000 @ 600)
             qty_match = re.search(r'(?:買入\s*)?([0-9.]+)', details)
             price_match = re.search(r'@\s*([0-9.]+)', details)
+            place_match = re.search(r'(?:於|地點|購買地點)\s*[:：]?\s*(.+)$', details)
 
             if not qty_match or not price_match:
-                return "未能解析數量或單價。範例：買入 1000 @ 600", None, None
+                return "未能解析數量或單價。範例：買入 1000 @ 600 於 台北", None, None
 
             quantity = float(qty_match.group(1))
             price = float(price_match.group(1))
+            purchase_place = place_match.group(1).strip() if place_match else None
 
-            asset_id = db.add_or_update_asset(user_id, symbol, name, asset_type, quantity, price)
-            summary = db.get_portfolio_summary(user_id)
-            flex = create_portfolio_summary_flex(summary)
+            asset_id = db.add_or_update_asset(user_id, symbol, name, asset_type, quantity, price, purchase_place=purchase_place)
+            asset = db.get_asset_detail(user_id, symbol)
+            flex = create_investment_detail_flex(asset)
 
-            return f"成功記錄買入 {symbol} {name}：{quantity} 股 @ ${price}", get_quick_reply([("📊查看總覽", "portfolio"), ("📈持股清單", "資產")]), flex
+            return f"成功記錄買入 {symbol} {name}：{quantity} 股 @ ${price}", get_quick_reply([("📊查看總覽", "portfolio"), ("📈持股清單", "資產"), ("🔍查看該檔明細", f"查看 {symbol}")]), flex
         except Exception as e:
             return f"新增失敗：{str(e)}", None, None
 
@@ -116,19 +119,21 @@ class InvestmentModule(BaseModule):
             elif stage == "awaiting_qty_price":
                 qty_match = re.search(r'([0-9.]+)', t)
                 price_match = re.search(r'@\s*([0-9.]+)', t)
+                place_match = re.search(r'(?:於|地點|購買地點)\s*[:：]?\s*(.+)$', t)
                 if not qty_match or not price_match:
-                    return "格式錯誤，請依格式輸入（如：1000 @ 600）：", get_quick_reply(["取消"]), None
+                    return "格式錯誤，請依格式輸入（如：1000 @ 600 於 台北）：", get_quick_reply(["取消"]), None
 
                 quantity = float(qty_match.group(1))
                 price = float(price_match.group(1))
+                purchase_place = place_match.group(1).strip() if place_match else None
                 data = state["data"]
 
-                asset_id = db.add_or_update_asset(user_id, data["symbol"], data["name"], data.get("asset_type", "台股"), quantity, price)
+                asset_id = db.add_or_update_asset(user_id, data["symbol"], data["name"], data.get("asset_type", "台股"), quantity, price, purchase_place=purchase_place)
                 core_db.clear_user_state(user_id)
 
-                summary = db.get_portfolio_summary(user_id)
-                flex = create_portfolio_summary_flex(summary)
-                return f"已成功記錄買入 [{data['symbol']}] {quantity} 股 @ ${price}！", None, flex
+                asset = db.get_asset_detail(user_id, data["symbol"])
+                flex = create_investment_detail_flex(asset)
+                return f"已成功記錄買入 [{data['symbol']}] {quantity} 股 @ ${price}！\n購買地點：{purchase_place or '未填'}", get_quick_reply([("📊查看總覽", "portfolio"), ("📈持股清單", "資產"), ("🔍查看該檔明細", f"查看 {data['symbol']}"), ("➕繼續新增", "買入")]), flex
 
         return "操作已清除。", None, None
 
@@ -155,6 +160,14 @@ class InvestmentModule(BaseModule):
                 return "目前尚無持股明細。", get_quick_reply([("➕新增買入", "買入")]), None
             flex = create_investment_list_flex(assets)
             return None, None, flex
+
+        if t.lower().startswith("查看 ") or t.lower().startswith("明細 "):
+            symbol = t.split(" ", 1)[1].strip().upper()
+            asset = db.get_asset_detail(user_id, symbol)
+            if asset:
+                flex = create_investment_detail_flex(asset)
+                return None, None, flex
+            return f"找不到持股標的 [{symbol}] 的庫存明細。", None, None
 
         if t_lower in ["買入", "新增投資"]:
             state = {"module": "investment", "action": "add_investment", "stage": "awaiting_symbol", "data": {"asset_type": "台股"}}

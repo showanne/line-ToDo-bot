@@ -33,14 +33,15 @@ def add_asset_api():
     quantity = float(data.get("quantity", 0))
     price = float(data.get("price", 0))
     currency = data.get("currency", "TWD").strip()
+    purchase_place = (data.get("purchase_place") or data.get("buy_place") or data.get("place") or "").strip()
     note = data.get("note")
 
     if not symbol or quantity <= 0 or price <= 0:
         return jsonify({"error": "標體代碼、買入數量與單價為必填"}), 400
 
     try:
-        asset_id = db.add_or_update_asset(user_id, symbol, name, asset_type, quantity, price, currency, note)
-        return jsonify({"status": "success", "id": asset_id}), 200
+        asset_id = db.add_or_update_asset(user_id, symbol, name, asset_type, quantity, price, currency, note, purchase_place)
+        return jsonify({"status": "success", "id": asset_id, "purchase_place": purchase_place}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

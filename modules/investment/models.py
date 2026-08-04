@@ -15,6 +15,7 @@ class InvestmentAsset(Base):
     cost_price = Column(Float, default=0.0)        # 平均成本單價
     current_price = Column(Float, default=0.0)     # 最新現價
     currency = Column(String, default="TWD")       # 幣別 (TWD / USD)
+    purchase_place = Column(String, nullable=True)  # 購買地點
     note = Column(Text)                            # 備註
     created_at = Column(String, default=lambda: datetime.now().isoformat())
     updated_at = Column(String, default=lambda: datetime.now().isoformat())
@@ -33,7 +34,7 @@ class InvestmentTransaction(Base):
 
 # --- CRUD API Helper Functions ---
 
-def add_or_update_asset(user_id, symbol, name, asset_type, quantity, price, currency="TWD", note=None):
+def add_or_update_asset(user_id, symbol, name, asset_type, quantity, price, currency="TWD", note=None, purchase_place=None):
     session = db_session()
     try:
         asset = session.query(InvestmentAsset).filter(
@@ -50,6 +51,7 @@ def add_or_update_asset(user_id, symbol, name, asset_type, quantity, price, curr
             asset.current_price = price
             asset.updated_at = datetime.now().isoformat()
             if note: asset.note = note
+            if purchase_place: asset.purchase_place = purchase_place
         else:
             asset = InvestmentAsset(
                 user_id=user_id,
@@ -60,6 +62,7 @@ def add_or_update_asset(user_id, symbol, name, asset_type, quantity, price, curr
                 cost_price=price,
                 current_price=price,
                 currency=currency,
+                purchase_place=purchase_place,
                 note=note
             )
             session.add(asset)
@@ -142,6 +145,7 @@ def list_assets(user_id, asset_type=None):
                 "cost_price": a.cost_price,
                 "current_price": a.current_price,
                 "currency": a.currency,
+                "purchase_place": a.purchase_place,
                 "cost_value": cost_val,
                 "market_value": market_val,
                 "profit": profit,
@@ -151,6 +155,14 @@ def list_assets(user_id, asset_type=None):
         return result
     finally:
         session.close()
+
+def get_asset_detail(user_id, symbol):
+    assets = list_assets(user_id)
+    symbol = symbol.upper()
+    for asset in assets:
+        if asset["symbol"] == symbol:
+            return asset
+    return None
 
 def get_portfolio_summary(user_id):
     assets = list_assets(user_id)

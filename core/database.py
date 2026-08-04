@@ -56,6 +56,12 @@ def init_db():
     """初始化所有模型資料表並套用遷移"""
     Base.metadata.create_all(bind=engine)
     run_migrations()
+    try:
+        from sqlalchemy import text
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE investment_assets ADD COLUMN purchase_place VARCHAR"))
+    except Exception:
+        pass
     print(f"Database initialized ({APP_ENV}): {db_type}")
 
 def get_or_create(session, model, **kwargs):

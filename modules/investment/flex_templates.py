@@ -76,6 +76,52 @@ def create_portfolio_summary_flex(summary):
         "footer": create_investment_navigation_footer()
     }
 
+def create_investment_detail_flex(asset):
+    if not asset:
+        return None
+
+    total_value = asset["quantity"] * asset["current_price"]
+    purchase_place = asset.get("purchase_place") or "未填"
+
+    return {
+        "type": "bubble",
+        "header": {"type": "box", "layout": "vertical", "backgroundColor": "#2C3E50", "paddingAll": "12px", "contents": [
+            {"type": "text", "text": f"📈 {asset['symbol']} {asset['name']}", "weight": "bold", "size": "lg", "color": "#ffffff", "align": "center"}
+        ]},
+        "body": {"type": "box", "layout": "vertical", "spacing": "md", "contents": [
+            {"type": "box", "layout": "horizontal", "contents": [
+                {"type": "text", "text": "類型", "size": "xs", "color": "#888888", "flex": 1},
+                {"type": "text", "text": asset["asset_type"], "size": "xs", "weight": "bold", "align": "end", "flex": 1}
+            ]},
+            {"type": "box", "layout": "horizontal", "contents": [
+                {"type": "text", "text": "持有數量", "size": "xs", "color": "#888888", "flex": 1},
+                {"type": "text", "text": f"{asset['quantity']}", "size": "xs", "weight": "bold", "align": "end", "flex": 1}
+            ]},
+            {"type": "box", "layout": "horizontal", "contents": [
+                {"type": "text", "text": "成本均價", "size": "xs", "color": "#888888", "flex": 1},
+                {"type": "text", "text": f"{asset['cost_price']:,.1f}", "size": "xs", "weight": "bold", "align": "end", "flex": 1}
+            ]},
+            {"type": "box", "layout": "horizontal", "contents": [
+                {"type": "text", "text": "目前現價", "size": "xs", "color": "#888888", "flex": 1},
+                {"type": "text", "text": f"{asset['current_price']:,.1f}", "size": "xs", "weight": "bold", "align": "end", "flex": 1}
+            ]},
+            {"type": "box", "layout": "horizontal", "contents": [
+                {"type": "text", "text": "購買地點", "size": "xs", "color": "#888888", "flex": 1},
+                {"type": "text", "text": purchase_place, "size": "xs", "weight": "bold", "align": "end", "flex": 1}
+            ]},
+            {"type": "box", "layout": "horizontal", "contents": [
+                {"type": "text", "text": "目前市值", "size": "xs", "color": "#888888", "flex": 1},
+                {"type": "text", "text": f"{total_value:,.0f}", "size": "xs", "weight": "bold", "align": "end", "flex": 1}
+            ]},
+            {"type": "box", "layout": "horizontal", "contents": [
+                {"type": "text", "text": "損益", "size": "xs", "color": "#888888", "flex": 1},
+                {"type": "text", "text": f"{asset['profit']:,.0f} ({asset['profit_rate']:.2f}%)", "size": "xs", "weight": "bold", "color": "#E74C3C" if asset['profit'] >= 0 else "#27AE60", "align": "end", "flex": 1}
+            ]}
+        ]},
+        "footer": create_investment_navigation_footer()
+    }
+
+
 def create_investment_list_flex(assets):
     if not assets: return None
 
