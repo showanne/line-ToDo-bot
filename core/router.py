@@ -3,6 +3,7 @@ from linebot.v3.messaging.models import ReplyMessageRequest, TextMessage as V3Te
 from core import database as core_db
 from modules.todo.handlers import TodoModule
 from modules.investment.handlers import InvestmentModule
+from modules.quote.handlers import QuoteModule
 
 class MessageRouter:
     """
@@ -12,7 +13,8 @@ class MessageRouter:
     def __init__(self):
         self.modules = {
             "todo": TodoModule(),
-            "investment": InvestmentModule()
+            "investment": InvestmentModule(),
+            "quote": QuoteModule()
         }
         # 模組切換指令映射
         self.mode_switches = {
@@ -27,7 +29,10 @@ class MessageRouter:
             "mode:house_viewing": "house_viewing",
             "@日曆": "calendar",
             "切換模式:日曆": "calendar",
-            "mode:calendar": "calendar"
+            "mode:calendar": "calendar",
+            "@佳句": "quote",
+            "切換模式:佳句": "quote",
+            "mode:quote": "quote"
         }
 
     def register_module(self, module):
@@ -45,7 +50,8 @@ class MessageRouter:
                 "todo": "📝 待辦清單",
                 "investment": "📈 投資狀態記錄",
                 "house_viewing": "🏠 看房預約助手",
-                "calendar": "📅 日曆事件機器人"
+                "calendar": "📅 日曆事件機器人",
+                "quote": "💬 佳句記錄"
             }
             display_name = mode_names.get(target_mode, target_mode)
             msg = f"已切換至【{display_name}】模式！"

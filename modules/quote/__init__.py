@@ -1,0 +1,1 @@
+"""Quote recording module package."""
