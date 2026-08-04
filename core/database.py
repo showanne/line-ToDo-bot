@@ -141,3 +141,64 @@ def export_all_data_as_sql():
         if payload.strip():
             sections.append(f"{title}\n{payload}")
     return "\n\n".join(sections)
+
+
+def import_sql_statements(sql_text):
+    from sqlalchemy import text
+
+    if not sql_text or not str(sql_text).strip():
+        return 0
+
+    session = db_session()
+    try:
+        statements = []
+        for raw_stmt in str(sql_text).split(";"):
+            stmt = raw_stmt.strip()
+            if not stmt or stmt.startswith("--"):
+                continue
+            if stmt.upper().startswith("INSERT INTO"):
+                statements.append(stmt)
+
+        for stmt in statements:
+            session.execute(text(stmt))
+        session.commit()
+        return len(statements)
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def import_all_data_from_sql(sql_text):
+    from modules.todo.models import import_data_from_sql as import_todo
+    from modules.investment.models import import_data_from_sql as import_investment
+    from modules.quote.models import import_data_from_sql as import_quote
+
+    sections = {
+        "-- TODO MODULE": import_todo,
+        "-- INVESTMENT MODULE": import_investment,
+        "-- QUOTE MODULE": import_quote,
+    }
+
+    parts = []
+    current_key = None
+    current_lines = []
+    for line in str(sql_text).splitlines():
+        stripped = line.strip()
+        if stripped in sections:
+            if current_key is not None and current_lines:
+                parts.append((current_key, "\n".join(current_lines).strip()))
+            current_key = stripped
+            current_lines = []
+        elif current_key is not None:
+            current_lines.append(line)
+
+    if current_key is not None and current_lines:
+        parts.append((current_key, "\n".join(current_lines).strip()))
+
+    for key, payload in parts:
+        if key in sections and payload:
+            sections[key](payload)
+
+    return True

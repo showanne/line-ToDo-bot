@@ -190,7 +190,65 @@
 
 此資料表由 Alembic 自動管理，僅用於追蹤資料庫目前遷移版本，不是業務資料表。
 
-## 6. 實體關聯圖（ERD）
+## 6. 資料匯出 / 匯入備份說明
+
+目前專案支援以 SQL 備份檔方式進行資料匯出與還原，這種方式最適合對應既有的 SQLAlchemy 模型結構，並能直接重放到資料庫中。
+
+### 6.1 匯出模式
+
+匯出主要是將資料以 `INSERT INTO ... VALUES ...` 的 SQL 語句組成，方便直接還原到同一個資料庫結構。
+
+#### 全部資料匯出
+
+- `GET /api/export`
+- 回傳內容：純文字 SQL，檔名為 `all_backup.sql`
+- 內容格式：
+  - `-- TODO MODULE`
+  - `-- INVESTMENT MODULE`
+  - `-- QUOTE MODULE`
+  - 之後各自附帶該模組的 `INSERT` 語句
+
+#### 模組單獨匯出
+
+- `GET /api/todo/export`
+- `GET /api/investment/export`
+- `GET /api/quote/export`
+
+上述 API 均會回傳該模組對應資料表的 SQL 備份內容，適合針對單一功能模組做備份。
+
+### 6.2 匯入模式
+
+匯入流程會讀取用戶上傳的 SQL 備份內容，逐筆解析 `INSERT` 語句後重新執行到資料庫中。這種方式保持了與匯出時一致的資料重建邏輯。
+
+#### 全部資料匯入
+
+- `POST /api/import`
+- 請求格式：原始文字內容，內容應為 `GET /api/export` 產生的 SQL 備份內容
+- 回應：`{"status": "success"}`
+
+#### 模組單獨匯入
+
+- `POST /api/todo/import`
+- `POST /api/investment/import`
+- `POST /api/quote/import`
+
+這些 API 用於將某一個模組的 SQL 備份重新載入到資料庫，讓備份/還原流程可以拆分為模組級別操作。
+
+### 6.3 匯出內容範圍
+
+目前匯出內容覆蓋以下主表與關聯表：
+
+- 待辦模組：`categories`、`sub_categories`、`tags`、`items`、`item_sub_categories`、`item_tags`
+- 語錄模組：`quote_tags`、`quotes`、`quote_tag_map`
+- 投資模組：`investment_assets`、`investment_transactions`
+
+### 6.4 使用建議
+
+- 若要做整體資料備份，建議使用 `GET /api/export`。
+- 若只想備份某一個模組，例如待辦資料，則使用 `GET /api/todo/export`。
+- 匯入時必須使用與匯出對應的 SQL 結構，避免在不同版本的資料庫欄位格式之間直接重放。
+
+## 7. 實體關聯圖（ERD）
 
 ```mermaid
 erDiagram

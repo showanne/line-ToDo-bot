@@ -164,6 +164,29 @@ def get_asset_detail(user_id, symbol):
             return asset
     return None
 
+def import_data_from_sql(sql_text):
+    from sqlalchemy import text
+    session = db_session()
+    try:
+        statements = []
+        for raw_stmt in str(sql_text).split(";"):
+            stmt = raw_stmt.strip()
+            if not stmt or stmt.startswith("--"):
+                continue
+            statements.append(stmt)
+
+        for stmt in statements:
+            if stmt.upper().startswith("INSERT INTO"):
+                session.execute(text(stmt))
+        session.commit()
+        return len(statements)
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
 def _sql_literal(value):
     if value is None:
         return "NULL"

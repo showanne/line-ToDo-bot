@@ -252,6 +252,29 @@ def rename_sub_category(user_id, cat_name, old, new):
     if not sc: return False
     sc.name = new; session.commit(); return True
 
+def import_data_from_sql(sql_text):
+    from sqlalchemy import text
+    session = db_session()
+    try:
+        statements = []
+        for raw_stmt in str(sql_text).split(";"):
+            stmt = raw_stmt.strip()
+            if not stmt or stmt.startswith("--"):
+                continue
+            statements.append(stmt)
+
+        for stmt in statements:
+            if stmt.upper().startswith("INSERT INTO"):
+                session.execute(text(stmt))
+        session.commit()
+        return len(statements)
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
 def export_data_as_sql():
     session = db_session()
     sql_statements = []

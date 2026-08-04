@@ -151,10 +151,34 @@ def export_todo_data_api():
         return jsonify({"error": str(e)}), 500
 
 
+@todo_api.post("/api/todo/import")
+def import_todo_data_api():
+    try:
+        raw_payload = request.get_data(as_text=True)
+        if not raw_payload.strip():
+            return jsonify({"error": "請提供匯入資料"}), 400
+        db.import_data_from_sql(raw_payload)
+        return jsonify({"status": "success"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @todo_api.get("/api/export")
 def export_all_data_api():
     try:
         sql_data = core_db.export_all_data_as_sql()
         return Response(sql_data, mimetype="text/plain", headers={"Content-Disposition": "attachment;filename=all_backup.sql"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@todo_api.post("/api/import")
+def import_all_data_api():
+    try:
+        payload = request.get_data(as_text=True)
+        if not payload.strip():
+            return jsonify({"error": "請提供匯入資料"}), 400
+        core_db.import_all_data_from_sql(payload)
+        return jsonify({"status": "success"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500

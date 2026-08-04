@@ -92,3 +92,15 @@ def export_quote_data_api():
         return Response(sql_data, mimetype="text/plain", headers={"Content-Disposition": "attachment;filename=quote_backup.sql"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@quote_api.post("/api/quote/import")
+def import_quote_data_api():
+    try:
+        raw_payload = request.get_data(as_text=True)
+        if not raw_payload.strip():
+            return jsonify({"error": "請提供匯入資料"}), 400
+        db.import_data_from_sql(raw_payload)
+        return jsonify({"status": "success"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
