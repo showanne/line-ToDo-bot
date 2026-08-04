@@ -4,6 +4,7 @@ from core import database as core_db
 from modules.todo.handlers import TodoModule
 from modules.investment.handlers import InvestmentModule
 from modules.quote.handlers import QuoteModule
+from modules.card.handlers import CardModule
 
 class MessageRouter:
     """
@@ -14,7 +15,8 @@ class MessageRouter:
         self.modules = {
             "todo": TodoModule(),
             "investment": InvestmentModule(),
-            "quote": QuoteModule()
+            "quote": QuoteModule(),
+            "card": CardModule()
         }
         # 模組切換指令映射
         self.mode_switches = {
@@ -32,7 +34,10 @@ class MessageRouter:
             "mode:calendar": "calendar",
             "@佳句": "quote",
             "切換模式:佳句": "quote",
-            "mode:quote": "quote"
+            "mode:quote": "quote",
+            "@名片": "card",
+            "切換模式:名片": "card",
+            "mode:card": "card"
         }
 
     def register_module(self, module):
@@ -51,7 +56,8 @@ class MessageRouter:
                 "investment": "📈 投資狀態記錄",
                 "house_viewing": "🏠 看房預約助手",
                 "calendar": "📅 日曆事件機器人",
-                "quote": "💬 佳句記錄"
+                "quote": "💬 佳句記錄",
+                "card": "👔 個人名片"
             }
             display_name = mode_names.get(target_mode, target_mode)
             msg = f"已切換至【{display_name}】模式！"

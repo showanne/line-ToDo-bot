@@ -8,16 +8,21 @@ Base = declarative_base()
 
 # 取得資料庫連線配置
 if DATABASE_URL:
-    url = DATABASE_URL
-    if url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql://", 1)
-    if url.startswith("postgresql://"):
-        url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
-    if "sslmode" not in url:
-        url += ("&" if "?" in url else "?") + "sslmode=require"
-    engine_url = url
-    connect_args = {"connect_timeout": 10}
-    db_type = "PostgreSQL (Supabase/Production)"
+    url = DATABASE_URL.strip()
+    if url.startswith("sqlite"):
+        engine_url = url
+        connect_args = {"check_same_thread": False}
+        db_type = "Local SQLite"
+    else:
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
+        if url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+        if "sslmode" not in url:
+            url += ("&" if "?" in url else "?") + "sslmode=require"
+        engine_url = url
+        connect_args = {"connect_timeout": 10}
+        db_type = "PostgreSQL (Supabase/Production)"
 else:
     engine_url = "sqlite:///todo.db"
     connect_args = {"check_same_thread": False}
@@ -130,12 +135,14 @@ def export_all_data_as_sql():
     from modules.todo.models import export_data_as_sql as todo_export
     from modules.investment.models import export_data_as_sql as investment_export
     from modules.quote.models import export_data_as_sql as quote_export
+    from modules.card.models import export_data_as_sql as card_export
 
     sections = []
     for title, exporter in [
         ("-- TODO MODULE", todo_export),
         ("-- INVESTMENT MODULE", investment_export),
         ("-- QUOTE MODULE", quote_export),
+        ("-- CARD MODULE", card_export),
     ]:
         payload = exporter()
         if payload.strip():
@@ -174,11 +181,13 @@ def import_all_data_from_sql(sql_text):
     from modules.todo.models import import_data_from_sql as import_todo
     from modules.investment.models import import_data_from_sql as import_investment
     from modules.quote.models import import_data_from_sql as import_quote
+    from modules.card.models import import_data_from_sql as import_card
 
     sections = {
         "-- TODO MODULE": import_todo,
         "-- INVESTMENT MODULE": import_investment,
         "-- QUOTE MODULE": import_quote,
+        "-- CARD MODULE": import_card,
     }
 
     parts = []
