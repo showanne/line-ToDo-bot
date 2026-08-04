@@ -1,111 +1,202 @@
 # 資料庫結構：LINE To-Do Bot
 
-本文件詳細說明了 LINE To-Do Bot 使用的資料庫結構。本專案使用 SQLAlchemy ORM 並搭配 **Alembic** 進行資料庫遷移管理，確保 SQLite (本地開發) 與 PostgreSQL (生產環境) 結構一致。
+本文件說明本專案實際使用的資料庫結構。專案採用 SQLAlchemy ORM，並搭配 Alembic 管理版本遷移，確保本地開發環境的 SQLite 與生產環境的 PostgreSQL 在模型上保持一致。
 
 ## 總覽
 
-資料庫設計以使用者為中心，所有核心資料都透過 `user_id` 進行區分。整個結構圍繞著三個核心概念：**主分類 (Categories)**、**子分類 (Sub-categories)** 和 **待辦事項 (Items)**。
+目前專案可分為四個資料域：
 
-- 一個使用者可以有**多個**主分類。
-- 一個主分類可以有**多個**子分類。
-- 一個待辦事項**屬於**一個使用者、一個主分類，並可選擇性屬於一個子分類。
-- 事項與子分類、標籤之間亦保留多對多關係的設計彈性。
+- 待辦事項模組：`categories`、`sub_categories`、`items`、`tags`
+- 引用/語錄模組：`quotes`、`quote_tags`、`quote_tag_map`
+- 投資追蹤模組：`investment_assets`、`investment_transactions`
+- 系統狀態模組：`user_states`、`user_contexts`
 
-## 資料表詳解
+所有核心資料都以 `user_id` 作為資料分界，並以 SQLAlchemy `Base.metadata` 集中管理模型。
 
-### 1. `categories`
+## 1. 待辦事項資料表
 
-此資料表儲存使用者定義的主分類。
+### 1.1 `categories`
+
+儲存使用者自訂的主分類。
 
 | 欄位名稱 | 資料類型 | 描述 |
 | :--- | :--- | :--- |
 | `id` | INTEGER | 主鍵，自動遞增。 |
-| `user_id`| TEXT | LINE 使用者的唯一 ID。 |
+| `user_id` | TEXT | LINE 使用者唯一 ID。 |
 | `name` | TEXT | 分類名稱。 |
 
-**關聯:**
-- `categories.id` 是 `sub_categories.category_id` 和 `items.category_id` 的外鍵。
+關聯：
+- `categories.id` 為 `sub_categories.category_id` 與 `items.category_id` 的外鍵來源。
 
-### 2. `sub_categories`
+### 1.2 `sub_categories`
 
-此資料表儲存子分類，並將其關聯到一個主分類。
+儲存子分類，並隸屬於某個主分類。
 
 | 欄位名稱 | 資料類型 | 描述 |
 | :--- | :--- | :--- |
 | `id` | INTEGER | 主鍵，自動遞增。 |
-| `category_id` | INTEGER | 外鍵，關聯到 `categories` 表的 `id`。 |
+| `category_id` | INTEGER | 外鍵，指向 `categories.id`。 |
 | `name` | TEXT | 子分類名稱。 |
 
-**關聯:**
+關聯：
 - `sub_categories.category_id` -> `categories.id`
-- `sub_categories.id` 是 `items.sub_category_id` 的外鍵。
+- `sub_categories.id` 可作為 `items.sub_category_id` 的單一預設關聯。
 
-### 3. `items`
+### 1.3 `tags`
 
-此資料表儲存待辦事項的詳細資訊。
+儲存使用者建立的標籤。
 
 | 欄位名稱 | 資料類型 | 描述 |
 | :--- | :--- | :--- |
 | `id` | INTEGER | 主鍵，自動遞增。 |
-| `user_id` | TEXT | LINE 使用者的唯一 ID。 |
-| `category_id` | INTEGER | 外鍵，關聯到 `categories` 表的 `id`。 |
-| `sub_category_id` | INTEGER | 外鍵，關聯到 `sub_categories` 表的 `id` (可為 Null)。 |
-| `title` | TEXT | 待辦事項的標題。 |
-| `description` | TEXT | 待辦事項的詳細描述。 |
-| `place` | TEXT | 待辦事項發生的地點。 |
-| `done` | INTEGER | 完成狀態。`0` 代表未完成，`1` 代表已完成。 |
-| `is_deleted` | INTEGER | 刪除狀態 (Soft Delete)。`0` 代表正常，`1` 代表已刪除。 |
-| `completed_date` | TEXT | 完成日期，格式為 ISO 格式的字串。 |
-
-**關聯:**
-- `items.user_id` -> 用於直接查詢特定使用者的所有項目。
-- `items.category_id` -> `categories.id`
-- `items.sub_category_id` -> `sub_categories.id`
-
-### 4. `tags`
-
-儲存標籤資訊。
-
-| 欄位名稱 | 資料類型 | 描述 |
-| :--- | :--- | :--- |
-| `id` | INTEGER | 主鍵。 |
-| `user_id` | TEXT | LINE User ID。 |
+| `user_id` | TEXT | LINE 使用者唯一 ID。 |
 | `name` | TEXT | 標籤名稱。 |
 
-### 5. `item_sub_categories` (多對多關聯表)
+### 1.4 `items`
 
-雖有 `sub_category_id` 欄位，但保留此表以支援單一事項屬於多個子分類的擴充性。
-
-| 欄位名稱 | 資料類型 | 描述 |
-| :--- | :--- | :--- |
-| `item_id` | INTEGER | 外鍵 (items.id)。 |
-| `sub_category_id` | INTEGER | 外鍵 (sub_categories.id)。 |
-
-### 6. `item_tags` (多對多關聯表)
+儲存待辦事項細節。
 
 | 欄位名稱 | 資料類型 | 描述 |
 | :--- | :--- | :--- |
-| `item_id` | INTEGER | 外鍵 (items.id)。 |
-| `tag_id` | INTEGER | 外鍵 (tags.id)。 |
+| `id` | INTEGER | 主鍵，自動遞增。 |
+| `user_id` | TEXT | LINE 使用者唯一 ID。 |
+| `category_id` | INTEGER | 外鍵，指向 `categories.id`。 |
+| `sub_category_id` | INTEGER | 外鍵，指向 `sub_categories.id`，可為 `NULL`。 |
+| `title` | TEXT | 待辦事項標題。 |
+| `description` | TEXT | 詳細描述。 |
+| `place` | TEXT | 地點。 |
+| `done` | INTEGER | 完成狀態，`0` = 未完成，`1` = 已完成。 |
+| `is_deleted` | INTEGER | 軟刪除狀態，`0` = 正常，`1` = 已刪除。 |
+| `completed_date` | TEXT | 完成日期，為 ISO 時間字串。 |
 
-## 資料庫遷移 (Migrations)
+關聯：
+- `items.category_id` -> `categories.id`
+- `items.sub_category_id` -> `sub_categories.id`
+- `items.user_id` 用於查詢單一使用者的待辦清單。
 
-本專案使用 **Alembic** 管理資料庫版本。
+### 1.5 `item_sub_categories`（多對多關聯表）
 
-- **初始化/更新**：系統啟動時會自動執行 `alembic upgrade head`，將資料庫更新至最新版本。
-- **產生變更腳本**：
-  若修改了 `database.py` 中的模型，請執行：
-  ```bash
-  alembic revision --autogenerate -m "描述變更"
-  ```
+雖然 `items` 本身保留 `sub_category_id` 單一欄位，但此關聯表提供同一個待辦可歸屬多個子分類的擴充能力。
 
-## 實體關聯圖 (ERD)
+| 欄位名稱 | 資料類型 | 描述 |
+| :--- | :--- | :--- |
+| `item_id` | INTEGER | 外鍵，指向 `items.id`。 |
+| `sub_category_id` | INTEGER | 外鍵，指向 `sub_categories.id`。 |
+
+### 1.6 `item_tags`（多對多關聯表）
+
+將待辦事項與標籤建立多對多關聯。
+
+| 欄位名稱 | 資料類型 | 描述 |
+| :--- | :--- | :--- |
+| `item_id` | INTEGER | 外鍵，指向 `items.id`。 |
+| `tag_id` | INTEGER | 外鍵，指向 `tags.id`。 |
+
+## 2. Quote / 語錄資料表
+
+### 2.1 `quotes`
+
+儲存使用者新增的語錄內容。
+
+| 欄位名稱 | 資料類型 | 描述 |
+| :--- | :--- | :--- |
+| `id` | INTEGER | 主鍵，自動遞增。 |
+| `user_id` | TEXT | LINE 使用者唯一 ID。 |
+| `content` | TEXT | 語錄內容。 |
+| `source` | TEXT | 引用來源，預設 `未填`。 |
+| `speaker` | TEXT | 說話者，預設 `未填`。 |
+| `created_at` | DATETIME | 建立時間。 |
+
+### 2.2 `quote_tags`
+
+儲存語錄標籤。
+
+| 欄位名稱 | 資料類型 | 描述 |
+| :--- | :--- | :--- |
+| `id` | INTEGER | 主鍵，自動遞增。 |
+| `user_id` | TEXT | LINE 使用者唯一 ID。 |
+| `name` | TEXT | 標籤名稱。 |
+
+### 2.3 `quote_tag_map`（多對多關聯表）
+
+將 `quotes` 與 `quote_tags` 建立多對多關聯。
+
+| 欄位名稱 | 資料類型 | 描述 |
+| :--- | :--- | :--- |
+| `quote_id` | INTEGER | 外鍵，指向 `quotes.id`。 |
+| `tag_id` | INTEGER | 外鍵，指向 `quote_tags.id`。 |
+
+## 3. 投資追蹤資料表
+
+### 3.1 `investment_assets`
+
+儲存投資標的資訊。
+
+| 欄位名稱 | 資料類型 | 描述 |
+| :--- | :--- | :--- |
+| `id` | INTEGER | 主鍵，自動遞增。 |
+| `user_id` | TEXT | LINE 使用者唯一 ID。 |
+| `symbol` | TEXT | 標的代碼，例如 `2330`、`AAPL`、`BTC`。 |
+| `name` | TEXT | 標的名稱。 |
+| `asset_type` | TEXT | 資產類別，例如 `台股`、`美股`、`加密貨幣`。 |
+| `quantity` | FLOAT | 持有數量。 |
+| `cost_price` | FLOAT | 平均成本。 |
+| `current_price` | FLOAT | 目前價格。 |
+| `currency` | TEXT | 幣別，預設 `TWD`。 |
+| `purchase_place` | TEXT | 購買地點。 |
+| `note` | TEXT | 備註。 |
+| `created_at` | TEXT | 建立時間（ISO 字串）。 |
+| `updated_at` | TEXT | 更新時間（ISO 字串）。 |
+
+### 3.2 `investment_transactions`
+
+儲存每次投資操作紀錄。
+
+| 欄位名稱 | 資料類型 | 描述 |
+| :--- | :--- | :--- |
+| `id` | INTEGER | 主鍵，自動遞增。 |
+| `user_id` | TEXT | LINE 使用者唯一 ID。 |
+| `asset_id` | INTEGER | 外鍵，指向 `investment_assets.id`。 |
+| `tx_type` | TEXT | 交易類型，例如 `BUY`、`SELL`、`DIVIDEND`。 |
+| `quantity` | FLOAT | 交易數量。 |
+| `price` | FLOAT | 交易價格。 |
+| `fee` | FLOAT | 手續費。 |
+| `tx_date` | TEXT | 交易日期。 |
+| `note` | TEXT | 備註。 |
+
+## 4. 系統狀態資料表
+
+### 4.1 `user_states`
+
+儲存 LINE 使用者的對話狀態快取。
+
+| 欄位名稱 | 資料類型 | 描述 |
+| :--- | :--- | :--- |
+| `user_id` | TEXT | 主鍵，LINE 使用者唯一 ID。 |
+| `state_data` | JSON | 使用者當前狀態資料。 |
+
+### 4.2 `user_contexts`
+
+儲存使用者目前的子助理模式（active mode）。
+
+| 欄位名稱 | 資料類型 | 描述 |
+| :--- | :--- | :--- |
+| `user_id` | TEXT | 主鍵，LINE 使用者唯一 ID。 |
+| `active_mode` | TEXT | 當前模組模式，例如 `todo`、`quote`、`investment`。 |
+
+## 5. 系統管理表
+
+### `alembic_version`
+
+此資料表由 Alembic 自動管理，僅用於追蹤資料庫目前遷移版本，不是業務資料表。
+
+## 6. 實體關聯圖（ERD）
 
 ```mermaid
 erDiagram
     categories {
         int id PK
-        string user_id FK
+        string user_id
         string name
     }
 
@@ -117,7 +208,7 @@ erDiagram
 
     items {
         int id PK
-        string user_id FK
+        string user_id
         int category_id FK
         int sub_category_id FK
         string title
@@ -130,13 +221,86 @@ erDiagram
 
     tags {
         int id PK
-        string user_id FK
+        string user_id
         string name
+    }
+
+    item_sub_categories {
+        int item_id PK, FK
+        int sub_category_id PK, FK
+    }
+
+    item_tags {
+        int item_id PK, FK
+        int tag_id PK, FK
+    }
+
+    quotes {
+        int id PK
+        string user_id
+        text content
+        string source
+        string speaker
+        datetime created_at
+    }
+
+    quote_tags {
+        int id PK
+        string user_id
+        string name
+    }
+
+    quote_tag_map {
+        int quote_id PK, FK
+        int tag_id PK, FK
+    }
+
+    investment_assets {
+        int id PK
+        string user_id
+        string symbol
+        string name
+        string asset_type
+        float quantity
+        float cost_price
+        float current_price
+        string currency
+        string purchase_place
+        text note
+        string created_at
+        string updated_at
+    }
+
+    investment_transactions {
+        int id PK
+        string user_id
+        int asset_id FK
+        string tx_type
+        float quantity
+        float price
+        float fee
+        string tx_date
+        text note
+    }
+
+    user_states {
+        string user_id PK
+        json state_data
+    }
+
+    user_contexts {
+        string user_id PK
+        string active_mode
     }
 
     categories ||--o{ sub_categories : "has"
     categories ||--o{ items : "has"
     sub_categories ||--o{ items : "has"
-    items }o--o{ tags : "tagged_with"
-
+    items }o--o{ item_sub_categories : "links"
+    sub_categories }o--o{ item_sub_categories : "links"
+    items }o--o{ item_tags : "tags"
+    tags }o--o{ item_tags : "tags"
+    quotes }o--o{ quote_tag_map : "mapped"
+    quote_tags }o--o{ quote_tag_map : "mapped"
+    investment_assets ||--o{ investment_transactions : "records"
 ```

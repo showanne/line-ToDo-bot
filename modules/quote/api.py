@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, Response
 from modules.quote import models as db
 
 quote_api = Blueprint("quote_api", __name__)
@@ -80,5 +80,15 @@ def delete_quote_api():
         if success:
             return jsonify({"status": "success"}), 200
         return jsonify({"error": "找不到該佳句"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@quote_api.get("/api/quote/export")
+def export_quote_data_api():
+    try:
+        user_id = request.args.get("user_id")
+        sql_data = db.export_data_as_sql(user_id=user_id)
+        return Response(sql_data, mimetype="text/plain", headers={"Content-Disposition": "attachment;filename=quote_backup.sql"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500

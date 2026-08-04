@@ -164,6 +164,91 @@ def get_asset_detail(user_id, symbol):
             return asset
     return None
 
+def _sql_literal(value):
+    if value is None:
+        return "NULL"
+    if isinstance(value, (int, float, bool)):
+        return str(value)
+    if isinstance(value, datetime):
+        return f"'{value.isoformat()}'"
+    safe_val = str(value).replace("'", "''")
+    return f"'{safe_val}'"
+
+
+def export_data_as_sql(user_id=None):
+    session = db_session()
+    sql_statements = []
+    tables = [
+        (InvestmentAsset, "investment_assets"),
+        (InvestmentTransaction, "investment_transactions")
+    ]
+    try:
+        for model, table_name in tables:
+            query = session.query(model)
+            if user_id:
+                query = query.filter(model.user_id == user_id)
+            rows = query.all()
+            for row in rows:
+                columns = [c.name for c in model.__table__.columns]
+                values = [_sql_literal(getattr(row, col)) for col in columns]
+                sql_statements.append(
+                    f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({', '.join(values)});"
+                )
+        return "\n".join(sql_statements)
+    finally:
+        session.close()
+
+
+def export_data_as_json(user_id=None):
+    session = db_session()
+    try:
+        assets_query = session.query(InvestmentAsset)
+        tx_query = session.query(InvestmentTransaction)
+        if user_id:
+            assets_query = assets_query.filter(InvestmentAsset.user_id == user_id)
+            tx_query = tx_query.filter(InvestmentTransaction.user_id == user_id)
+
+        assets = assets_query.order_by(InvestmentAsset.id).all()
+        transactions = tx_query.order_by(InvestmentTransaction.id).all()
+
+        return {
+            "assets": [
+                {
+                    "id": a.id,
+                    "user_id": a.user_id,
+                    "symbol": a.symbol,
+                    "name": a.name,
+                    "asset_type": a.asset_type,
+                    "quantity": a.quantity,
+                    "cost_price": a.cost_price,
+                    "current_price": a.current_price,
+                    "currency": a.currency,
+                    "purchase_place": a.purchase_place,
+                    "note": a.note,
+                    "created_at": a.created_at,
+                    "updated_at": a.updated_at,
+                }
+                for a in assets
+            ],
+            "transactions": [
+                {
+                    "id": t.id,
+                    "user_id": t.user_id,
+                    "asset_id": t.asset_id,
+                    "tx_type": t.tx_type,
+                    "quantity": t.quantity,
+                    "price": t.price,
+                    "fee": t.fee,
+                    "tx_date": t.tx_date,
+                    "note": t.note,
+                }
+                for t in transactions
+            ]
+        }
+    finally:
+        session.close()
+
+
 def get_portfolio_summary(user_id):
     assets = list_assets(user_id)
     total_cost = sum(a["cost_value"] for a in assets)

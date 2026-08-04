@@ -159,3 +159,82 @@ def list_quote_tags(user_id):
         return [tag.name for tag in session.query(QuoteTag).filter(QuoteTag.user_id == user_id).all()]
     finally:
         session.close()
+
+
+def _sql_literal(value):
+    if value is None:
+        return "NULL"
+    if isinstance(value, (int, float, bool)):
+        return str(value)
+    if isinstance(value, datetime):
+        return f"'{value.isoformat()}'"
+    safe_val = str(value).replace("'", "''")
+    return f"'{safe_val}'"
+
+
+def export_data_as_sql(user_id=None):
+    session = db_session()
+    sql_statements = []
+    tables = [
+        (QuoteTag, "quote_tags"),
+        (Quote, "quotes")
+    ]
+    try:
+        for model, table_name in tables:
+            query = session.query(model)
+            if user_id:
+                query = query.filter(model.user_id == user_id)
+            rows = query.all()
+            for row in rows:
+                columns = [c.name for c in model.__table__.columns]
+                values = [_sql_literal(getattr(row, col)) for col in columns]
+                sql_statements.append(
+                    f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({', '.join(values)});"
+                )
+
+        rel_results = session.execute(quote_tag_map.select()).all()
+        for r in rel_results:
+            sql_statements.append(
+                f"INSERT INTO quote_tag_map (quote_id, tag_id) VALUES ({r[0]}, {r[1]});"
+            )
+        return "\n".join(sql_statements)
+    finally:
+        session.close()
+
+
+def export_data_as_json(user_id=None):
+    session = db_session()
+    try:
+        tags_query = session.query(QuoteTag)
+        quotes_query = session.query(Quote).options(selectinload(Quote.tags))
+        if user_id:
+            tags_query = tags_query.filter(QuoteTag.user_id == user_id)
+            quotes_query = quotes_query.filter(Quote.user_id == user_id)
+
+        quote_tags = tags_query.order_by(QuoteTag.id).all()
+        quotes = quotes_query.order_by(Quote.created_at.desc()).all()
+
+        return {
+            "quote_tags": [
+                {
+                    "id": tag.id,
+                    "user_id": tag.user_id,
+                    "name": tag.name,
+                }
+                for tag in quote_tags
+            ],
+            "quotes": [
+                {
+                    "id": quote.id,
+                    "user_id": quote.user_id,
+                    "content": quote.content,
+                    "source": quote.source,
+                    "speaker": quote.speaker,
+                    "created_at": quote.created_at.isoformat() if quote.created_at else None,
+                    "tags": [tag.name for tag in quote.tags],
+                }
+                for quote in quotes
+            ]
+        }
+    finally:
+        session.close()

@@ -1,5 +1,5 @@
 # modules/investment/api.py
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, Response
 from modules.investment import models as db
 
 investment_api = Blueprint("investment_api", __name__)
@@ -79,5 +79,15 @@ def delete_asset_api():
             return jsonify({"status": "success"}), 200
         else:
             return jsonify({"error": "刪除失敗"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@investment_api.get("/api/investment/export")
+def export_investment_data_api():
+    try:
+        user_id = request.args.get("user_id")
+        sql_data = db.export_data_as_sql(user_id=user_id)
+        return Response(sql_data, mimetype="text/plain", headers={"Content-Disposition": "attachment;filename=investment_backup.sql"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500

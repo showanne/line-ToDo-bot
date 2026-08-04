@@ -124,3 +124,20 @@ def set_user_active_mode(user_id, mode):
         return False
     finally:
         session.close()
+
+
+def export_all_data_as_sql():
+    from modules.todo.models import export_data_as_sql as todo_export
+    from modules.investment.models import export_data_as_sql as investment_export
+    from modules.quote.models import export_data_as_sql as quote_export
+
+    sections = []
+    for title, exporter in [
+        ("-- TODO MODULE", todo_export),
+        ("-- INVESTMENT MODULE", investment_export),
+        ("-- QUOTE MODULE", quote_export),
+    ]:
+        payload = exporter()
+        if payload.strip():
+            sections.append(f"{title}\n{payload}")
+    return "\n\n".join(sections)

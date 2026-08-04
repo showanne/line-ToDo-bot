@@ -1,5 +1,6 @@
 # modules/todo/api.py
 from flask import Blueprint, request, jsonify, Response
+from core import database as core_db
 from modules.todo import models as db
 
 todo_api = Blueprint("todo_api", __name__)
@@ -141,10 +142,19 @@ def get_places_api():
     uid = request.args.get("user_id")
     return jsonify(db.get_places_summary(user_id=uid)), 200
 
-@todo_api.get("/api/export")
-def export_data_api():
+@todo_api.get("/api/todo/export")
+def export_todo_data_api():
     try:
         sql_data = db.export_data_as_sql()
         return Response(sql_data, mimetype="text/plain", headers={"Content-Disposition": "attachment;filename=todo_backup.sql"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@todo_api.get("/api/export")
+def export_all_data_api():
+    try:
+        sql_data = core_db.export_all_data_as_sql()
+        return Response(sql_data, mimetype="text/plain", headers={"Content-Disposition": "attachment;filename=all_backup.sql"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
