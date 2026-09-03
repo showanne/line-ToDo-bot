@@ -1,5 +1,5 @@
 name = "line-todo-bot"
-main = "src/entry.py"
+main = "app.py"
 compatibility_date = "2024-09-02"
 compatibility_flags = ["python_workers"]
 
