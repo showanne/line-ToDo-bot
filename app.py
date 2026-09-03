@@ -20,6 +20,8 @@ from core.scheduler import start_scheduler
 from core.router import MessageRouter
 from modules.todo.api import todo_api
 from modules.investment.api import investment_api
+from modules.quote.api import quote_api
+from modules.card.api import card_api
 
 # 1. 初始化 Flask 應用與數據庫
 app = Flask(__name__)
@@ -31,6 +33,8 @@ start_scheduler()
 # 2. 註冊子模組與 Blueprint
 app.register_blueprint(todo_api)
 app.register_blueprint(investment_api)
+app.register_blueprint(quote_api)
+app.register_blueprint(card_api)
 
 # 3. 初始化訊息分發路由器 (Door)
 router = MessageRouter()
@@ -90,7 +94,9 @@ def callback():
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
-    if os.getenv("APP_ENV") != "production":
+    enable_ngrok = os.getenv("ENABLE_NGROK", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+    if os.getenv("APP_ENV") != "production" and enable_ngrok:
         try:
             from pyngrok import ngrok
             token = os.getenv("NGROK_AUTHTOKEN")

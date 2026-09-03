@@ -2,7 +2,6 @@ flask
 python-dotenv
 line-bot-sdk
 sqlalchemy
-psycopg2-binary
+pg8000
 alembic
-pyngrok
-apscheduler
+asgiref

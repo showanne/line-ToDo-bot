@@ -16,8 +16,13 @@ if DATABASE_URL:
     else:
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql://", 1)
-        if url.startswith("postgresql://"):
-            url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+        if url.startswith("postgresql://") and not url.startswith("postgresql+"):
+            try:
+                import psycopg2
+                pg_driver = "postgresql+psycopg2://"
+            except ImportError:
+                pg_driver = "postgresql+pg8000://"
+            url = url.replace("postgresql://", pg_driver, 1)
         if "sslmode" not in url:
             url += ("&" if "?" in url else "?") + "sslmode=require"
         engine_url = url

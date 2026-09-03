@@ -14,10 +14,17 @@ def keep_supabase_alive():
     except Exception as e:
         print(f"[{datetime.now()}] Error pinging database: {e}")
 
-scheduler = BackgroundScheduler()
-scheduler.add_job(func=keep_supabase_alive, trigger="interval", days=6)
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(func=keep_supabase_alive, trigger="interval", days=6)
+except Exception:
+    scheduler = None
 
 def start_scheduler():
-    if not scheduler.running:
-        scheduler.start()
-        print("Background scheduler started.")
+    if scheduler and not getattr(scheduler, "running", False):
+        try:
+            scheduler.start()
+            print("Background scheduler started.")
+        except Exception as e:
+            print(f"Background scheduler skipped in serverless environment: {e}")

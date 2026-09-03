@@ -1,0 +1,11 @@
+[project]
+name = "line-todo-bot"
+version = "0.1.0"
+dependencies = [
+    "flask",
+    "python-dotenv",
+    "line-bot-sdk",
+    "sqlalchemy",
+    "pg8000",
+    "asgiref"
+]
