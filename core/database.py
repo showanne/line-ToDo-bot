@@ -53,14 +53,14 @@ class UserContext(Base):
 
 def run_migrations():
     """執行 Alembic 資料庫遷移"""
-    from alembic.config import Config
-    from alembic import command
-    alembic_cfg = Config("alembic.ini")
     try:
+        from alembic.config import Config
+        from alembic import command
+        alembic_cfg = Config("alembic.ini")
         command.upgrade(alembic_cfg, "head")
         print("Alembic migrations applied successfully.")
     except Exception as e:
-        print(f"Error applying migrations: {e}")
+        print(f"Skipping Alembic migrations: {e}")
 
 def init_db():
     """初始化所有模型資料表並套用遷移"""
