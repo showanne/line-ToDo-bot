@@ -39,6 +39,13 @@ app.register_blueprint(card_api)
 # 3. 初始化訊息分發路由器 (Door)
 router = MessageRouter()
 
+# 4. 註冊 Cloudflare Workers WSGI 入口點
+try:
+    from workers import wsgi
+    app = wsgi.entrypoint(app)
+except Exception:
+    pass
+
 # ------------------------
 # 平台路由與 API
 # ------------------------

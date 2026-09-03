@@ -9,3 +9,9 @@ dependencies = [
     "pg8000",
     "asgiref"
 ]
+
+[dependency-groups]
+dev = [
+    "workers-py",
+    "workers-runtime-sdk",
+]
