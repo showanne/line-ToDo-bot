@@ -5,3 +5,4 @@ sqlalchemy
 pg8000
 alembic
 asgiref
+workers-py
