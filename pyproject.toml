@@ -14,9 +14,7 @@ dependencies = [
     "line-bot-sdk",
     "sqlalchemy",
     "pg8000",
-    "alembic",
-    "asgiref",
-    "workers-py"
+    "asgiref"
 ]
 
 [dependency-groups]
