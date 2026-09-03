@@ -1,5 +1,10 @@
-# Python
+# Virtual environments
 venv/
+.venv/
+.venv*/
+python_modules/
+pylock.toml
+
 __pycache__/
 *.pyc
 
